@@ -7,6 +7,11 @@ import android.os.Build
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import org.incammino.hospiceinventory.data.SampleDataPopulator
 import javax.inject.Inject
 
 /**
@@ -15,13 +20,25 @@ import javax.inject.Inject
  */
 @HiltAndroidApp
 class HospiceInventoryApp : Application(), Configuration.Provider {
-    
+
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
-    
+
+    @Inject
+    lateinit var sampleDataPopulator: SampleDataPopulator
+
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
+
+        // Popola dati di esempio in sviluppo
+        if (BuildConfig.DEBUG) {
+            applicationScope.launch {
+                sampleDataPopulator.populateIfEmpty()
+            }
+        }
     }
     
     /**

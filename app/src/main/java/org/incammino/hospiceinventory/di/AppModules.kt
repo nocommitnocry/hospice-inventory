@@ -83,7 +83,7 @@ object AiModule {
     @Singleton
     fun provideGenerativeModel(): GenerativeModel {
         return GenerativeModel(
-            modelName = "gemini-2.0-flash",
+            modelName = "gemini-2.5-pro",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
                 temperature = 0.7f
@@ -122,3 +122,11 @@ Per le scadenze manutenzioni:
 - Se scaduta: "SCADUTA da X giorni - richiede intervento urgente"
 """
 }
+
+/**
+ * Nota: I Repository (ProductRepository, MaintainerRepository, MaintenanceRepository)
+ * sono annotati con @Singleton e @Inject constructor, quindi Hilt li risolve
+ * automaticamente tramite constructor injection senza bisogno di un modulo dedicato.
+ *
+ * Se in futuro servisse binding esplicito o interfacce, creare un RepositoryModule.
+ */

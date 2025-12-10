@@ -139,6 +139,9 @@ interface ProductDao {
     
     @Query("SELECT COUNT(*) FROM products WHERE isActive = 1")
     suspend fun countActive(): Int
+
+    @Query("SELECT COUNT(*) FROM products")
+    suspend fun countAll(): Int
     
     @Query("SELECT DISTINCT category FROM products WHERE isActive = 1 ORDER BY category")
     fun getAllCategories(): Flow<List<String>>
