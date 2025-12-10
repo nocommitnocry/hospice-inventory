@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hospice Inventory</string>
+    
+    <!-- Azioni comuni -->
+    <string name="action_save">Salva</string>
+    <string name="action_cancel">Annulla</string>
+    <string name="action_delete">Elimina</string>
+    <string name="action_edit">Modifica</string>
+    <string name="action_search">Cerca</string>
+    <string name="action_scan">Scansiona</string>
+    <string name="action_back">Indietro</string>
+    
+    <!-- Home -->
+    <string name="home_tap_to_speak">Tocca per parlare</string>
+    <string name="home_listening">Sto ascoltando...</string>
+    <string name="home_quick_scan">Scansiona</string>
+    <string name="home_quick_search">Cerca</string>
+    <string name="home_quick_new">Nuovo</string>
+    <string name="home_quick_maintenances">Scadenze</string>
+    
+    <!-- Prodotti -->
+    <string name="product_detail">Dettaglio prodotto</string>
+    <string name="product_new">Nuovo prodotto</string>
+    <string name="product_edit">Modifica prodotto</string>
+    <string name="product_name">Nome prodotto</string>
+    <string name="product_description">Descrizione</string>
+    <string name="product_category">Categoria</string>
+    <string name="product_location">Ubicazione</string>
+    <string name="product_barcode">Codice a barre</string>
+    <string name="product_purchase_date">Data acquisto</string>
+    <string name="product_price">Prezzo</string>
+    
+    <!-- Garanzia -->
+    <string name="warranty_maintainer">Manutentore garanzia</string>
+    <string name="warranty_end_date">Scadenza garanzia</string>
+    <string name="warranty_status_active">In garanzia</string>
+    <string name="warranty_status_expired">Garanzia scaduta</string>
+    <string name="warranty_days_remaining">%d giorni rimanenti</string>
+    
+    <!-- Manutenzioni -->
+    <string name="maintenance_title">Manutenzioni</string>
+    <string name="maintenance_add">Nuova manutenzione</string>
+    <string name="maintenance_edit">Modifica manutenzione</string>
+    <string name="maintenance_service_maintainer">Manutentore service</string>
+    <string name="maintenance_frequency">Frequenza manutenzione</string>
+    <string name="maintenance_last_date">Ultima manutenzione</string>
+    <string name="maintenance_next_due">Prossima scadenza</string>
+    <string name="maintenance_type">Tipo intervento</string>
+    <string name="maintenance_outcome">Esito</string>
+    <string name="maintenance_notes">Note</string>
+    
+    <!-- Frequenze -->
+    <string name="freq_quarterly">Trimestrale (3 mesi)</string>
+    <string name="freq_semiannual">Semestrale (6 mesi)</string>
+    <string name="freq_annual">Annuale</string>
+    <string name="freq_biennial">Biennale (2 anni)</string>
+    <string name="freq_triennial">Triennale (3 anni)</string>
+    <string name="freq_custom">Personalizzata</string>
+    
+    <!-- Alert -->
+    <string name="alert_overdue">SCADUTA da %d giorni</string>
+    <string name="alert_due_today">Scade OGGI</string>
+    <string name="alert_due_soon">Scade tra %d giorni</string>
+    <string name="alert_count_overdue">%d manutenzioni SCADUTE</string>
+    <string name="alert_count_upcoming">%d in scadenza questa settimana</string>
+    
+    <!-- Impostazioni -->
+    <string name="settings_title">Impostazioni</string>
+
+    <!-- Sync -->
+    <string name="sync_online">Online</string>
+    <string name="sync_offline">Offline</string>
+    <string name="sync_pending">%d da sincronizzare</string>
+    <string name="sync_done">Sincronizzato</string>
+    
+    <!-- Email -->
+    <string name="email_send_request">Invia richiesta</string>
+    <string name="email_sent">Email inviata</string>
+    <string name="email_queued">Email in coda (invio offline)</string>
+    
+    <!-- Errori -->
+    <string name="error_generic">Si è verificato un errore</string>
+    <string name="error_not_found">Prodotto non trovato</string>
+    <string name="error_save_failed">Salvataggio fallito</string>
+    <string name="error_voice_unavailable">Riconoscimento vocale non disponibile</string>
+    
+    <!-- Conferme -->
+    <string name="confirm_delete_title">Conferma eliminazione</string>
+    <string name="confirm_delete_message">Vuoi eliminare questo prodotto?</string>
+    <string name="confirm_email_title">Conferma invio email</string>
+    <string name="confirm_email_message">Vuoi inviare la richiesta di intervento a %s?</string>
+</resources>

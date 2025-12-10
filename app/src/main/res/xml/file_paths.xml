@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Immagini prodotti -->
+    <files-path name="product_images" path="images/" />
+    
+    <!-- Cache per condivisione temporanea -->
+    <cache-path name="shared_cache" path="shared/" />
+    
+    <!-- Immagini esterne (galleria) -->
+    <external-files-path name="external_images" path="Pictures/" />
+</paths>

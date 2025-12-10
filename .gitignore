@@ -1,0 +1,62 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# .gitignore for Hospice Inventory
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── GRADLE ────────────────────────────────────────────────────────────────
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ─── ANDROID STUDIO ────────────────────────────────────────────────────────
+*.iml
+.idea/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+.idea/dictionaries
+.idea/libraries
+.idea/caches
+.idea/modules.xml
+.idea/encodings.xml
+.idea/misc.xml
+.idea/navEditor.xml
+.idea/vcs.xml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ─── LOCAL CONFIGURATION ───────────────────────────────────────────────────
+local.properties
+*.keystore
+!debug.keystore
+google-services.json
+
+# ─── API KEYS (MAI COMMITTARE!) ────────────────────────────────────────────
+# Le chiavi API devono essere in local.properties
+secrets.properties
+api_keys.properties
+
+# ─── KOTLIN / JAVA ─────────────────────────────────────────────────────────
+*.class
+*.log
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# ─── OS GENERATED FILES ────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ─── TESTING ───────────────────────────────────────────────────────────────
+/coverage/
+/.nyc_output/

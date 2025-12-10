@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Colori primari (dal logo farfalla) -->
+    <color name="primary">#1E88E5</color>
+    <color name="primary_light">#90CAF9</color>
+    <color name="primary_dark">#1565C0</color>
+    
+    <!-- Background -->
+    <color name="background">#FAFAFA</color>
+    <color name="surface">#FFFFFF</color>
+    
+    <!-- Text -->
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    
+    <!-- Semantic -->
+    <color name="success">#4CAF50</color>
+    <color name="warning">#FF9800</color>
+    <color name="error">#F44336</color>
+    <color name="info">#2196F3</color>
+    
+    <!-- Alert -->
+    <color name="alert_overdue">#D32F2F</color>
+    <color name="alert_warning">#F57C00</color>
+    <color name="alert_ok">#388E3C</color>
+
+    <!-- Launcher Icon -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>

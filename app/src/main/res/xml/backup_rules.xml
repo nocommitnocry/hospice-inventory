@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Database locale -->
+    <include domain="database" path="." />
+    
+    <!-- Immagini prodotti -->
+    <include domain="file" path="images/" />
+    
+    <!-- Preferences -->
+    <include domain="sharedpref" path="." />
+    
+    <!-- Escludi cache -->
+    <exclude domain="cache" path="." />
+    
+    <!-- Escludi file temporanei -->
+    <exclude domain="file" path="temp/" />
+</full-backup-content>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Farfalla stilizzata in blu hospice -->
+    <group android:translateX="24" android:translateY="24">
+        <!-- Ala sinistra -->
+        <path
+            android:fillColor="#1E88E5"
+            android:pathData="M30,15 Q15,5 10,20 Q5,35 20,40 Q35,45 40,30 Q45,15 30,15 Z"/>
+        <!-- Ala destra -->
+        <path
+            android:fillColor="#90CAF9"
+            android:pathData="M30,15 Q45,5 50,20 Q55,35 40,40 Q25,45 20,30 Q15,15 30,15 Z"/>
+        <!-- Corpo -->
+        <path
+            android:fillColor="#1565C0"
+            android:pathData="M28,12 L32,12 L32,48 L28,48 Z"/>
+        <!-- Antenne -->
+        <path
+            android:strokeColor="#1565C0"
+            android:strokeWidth="2"
+            android:pathData="M30,12 Q25,5 20,2"/>
+        <path
+            android:strokeColor="#1565C0"
+            android:strokeWidth="2"
+            android:pathData="M30,12 Q35,5 40,2"/>
+    </group>
+</vector>
