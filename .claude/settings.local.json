@@ -11,7 +11,8 @@
       "Bash(if [ ! -f /home/oshcherbakova/HospiceInventory/local.properties ])",
       "Bash(then echo -e \"# SDK location (auto-detected)\\n# sdk.dir=/path/to/Android/Sdk\\n\\n# Gemini API Key (required for AI features)\\nGEMINI_API_KEY=placeholder_key_for_build\")",
       "Bash(else echo \"local.properties exists\")",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(./gradlew clean assembleDebug:*)"
     ]
   }
 }

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,6 +8,14 @@ plugins {
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+}
+
+// Carica local.properties
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        load(localPropertiesFile.inputStream())
+    }
 }
 
 android {
@@ -26,8 +36,8 @@ android {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
 
-        // Build config for API keys (will be set in local.properties)
-        buildConfigField("String", "GEMINI_API_KEY", "\"${project.findProperty("GEMINI_API_KEY") ?: ""}\"")
+        // Build config for API keys (from local.properties)
+        buildConfigField("String", "GEMINI_API_KEY", "\"${localProperties.getProperty("GEMINI_API_KEY", "")}\"")
     }
 
     buildTypes {
