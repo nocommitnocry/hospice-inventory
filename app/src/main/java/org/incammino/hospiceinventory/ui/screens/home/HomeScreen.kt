@@ -16,14 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import org.incammino.hospiceinventory.service.voice.AssistantState
 import org.incammino.hospiceinventory.ui.theme.*
 
 /**
@@ -42,7 +41,21 @@ fun HomeScreen(
     onNavigateToScanner: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    
+
+    // Gestisci navigazione richiesta dall'AI
+    LaunchedEffect(uiState.pendingNavigation) {
+        uiState.pendingNavigation?.let { action ->
+            when (action) {
+                is NavigationAction.ToSearch -> onNavigateToSearch(action.query)
+                is NavigationAction.ToProduct -> onNavigateToProduct(action.productId)
+                is NavigationAction.ToNewProduct -> onNavigateToNewProduct()
+                is NavigationAction.ToMaintenances -> onNavigateToMaintenances()
+                is NavigationAction.ToScanner -> onNavigateToScanner()
+            }
+            viewModel.consumeNavigation()
+        }
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -51,7 +64,6 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        // Logo placeholder (sostituire con Image quando disponibile)
                         Text(
                             text = "🦋",
                             style = MaterialTheme.typography.headlineMedium
@@ -96,32 +108,29 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
-            
+
             // Pulsante Vocale Grande
-            Spacer(modifier = Modifier.weight(0.3f))
-            
+            Spacer(modifier = Modifier.weight(0.2f))
+
             VoiceButton(
-                isListening = uiState.isListening,
+                assistantState = uiState.assistantState,
+                isVoiceAvailable = uiState.isVoiceAvailable,
                 onClick = { viewModel.toggleVoice() }
             )
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
-            // Testo trascrizione
-            Text(
-                text = if (uiState.isListening) {
-                    uiState.transcription.ifEmpty { "Sto ascoltando..." }
-                } else {
-                    "Tocca per parlare"
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 32.dp)
+
+            // Area risposta/trascrizione
+            AssistantResponseArea(
+                assistantState = uiState.assistantState,
+                transcription = uiState.transcription,
+                aiResponse = uiState.aiResponse,
+                onConfirm = { viewModel.confirmAction() },
+                onCancel = { viewModel.rejectAction() }
             )
-            
-            Spacer(modifier = Modifier.weight(0.3f))
-            
+
+            Spacer(modifier = Modifier.weight(0.2f))
+
             // Azioni Rapide
             QuickActionsGrid(
                 onScanClick = onNavigateToScanner,
@@ -129,9 +138,9 @@ fun HomeScreen(
                 onNewClick = onNavigateToNewProduct,
                 onMaintenancesClick = onNavigateToMaintenances
             )
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Status Bar
             StatusBar(
                 isOnline = uiState.isOnline,
@@ -158,7 +167,7 @@ private fun AlertBanner(
             containerColor = if (overdueCount > 0) {
                 MaterialTheme.colorScheme.errorContainer
             } else {
-                Color(0xFFFFF3E0) // Arancione chiaro
+                Color(0xFFFFF3E0)
             }
         )
     ) {
@@ -171,7 +180,7 @@ private fun AlertBanner(
             Icon(
                 imageVector = if (overdueCount > 0) Icons.Filled.Warning else Icons.Filled.Schedule,
                 contentDescription = null,
-                tint = if (overdueCount > 0) AlertOverdue else WarningOrange
+                tint = if (overdueCount > 0) AlertOverdue else AlertWarning
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -187,7 +196,7 @@ private fun AlertBanner(
                     Text(
                         text = "$upcomingCount in scadenza questa settimana",
                         style = MaterialTheme.typography.bodySmall,
-                        color = WarningOrange
+                        color = AlertWarning
                     )
                 }
             }
@@ -200,15 +209,27 @@ private fun AlertBanner(
 }
 
 /**
- * Pulsante vocale animato.
+ * Pulsante vocale animato con stati multipli.
  */
 @Composable
 private fun VoiceButton(
-    isListening: Boolean,
+    assistantState: AssistantState,
+    isVoiceAvailable: Boolean,
     onClick: () -> Unit
 ) {
+    val isListening = assistantState is AssistantState.Listening ||
+            assistantState is AssistantState.Recognizing
+    val isThinking = assistantState is AssistantState.Thinking
+    val isSpeaking = assistantState is AssistantState.Speaking
+    val isWaiting = assistantState is AssistantState.WaitingConfirmation
+    val isError = assistantState is AssistantState.Error
+
     val scale by animateFloatAsState(
-        targetValue = if (isListening) 1.1f else 1f,
+        targetValue = when {
+            isListening -> 1.1f
+            isThinking -> 1.05f
+            else -> 1f
+        },
         animationSpec = if (isListening) {
             infiniteRepeatable(
                 animation = tween(600, easing = EaseInOutQuad),
@@ -219,42 +240,139 @@ private fun VoiceButton(
         },
         label = "scale"
     )
-    
+
     val backgroundColor by animateColorAsState(
-        targetValue = if (isListening) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.primaryContainer
+        targetValue = when {
+            !isVoiceAvailable -> MaterialTheme.colorScheme.surfaceVariant
+            isError -> MaterialTheme.colorScheme.errorContainer
+            isListening -> MaterialTheme.colorScheme.primary
+            isThinking -> MaterialTheme.colorScheme.tertiary
+            isSpeaking || isWaiting -> MaterialTheme.colorScheme.secondaryContainer
+            else -> MaterialTheme.colorScheme.primaryContainer
         },
         animationSpec = tween(300),
         label = "backgroundColor"
     )
-    
+
     val iconColor by animateColorAsState(
-        targetValue = if (isListening) {
-            Color.White
-        } else {
-            MaterialTheme.colorScheme.primary
+        targetValue = when {
+            !isVoiceAvailable -> MaterialTheme.colorScheme.onSurfaceVariant
+            isError -> MaterialTheme.colorScheme.error
+            isListening -> Color.White
+            isThinking -> Color.White
+            else -> MaterialTheme.colorScheme.primary
         },
         animationSpec = tween(300),
         label = "iconColor"
     )
-    
+
+    val icon = when {
+        !isVoiceAvailable -> Icons.Outlined.MicOff
+        isListening -> Icons.Filled.Mic
+        isThinking -> Icons.Filled.Psychology
+        isSpeaking -> Icons.Filled.RecordVoiceOver
+        isWaiting -> Icons.Filled.QuestionMark
+        isError -> Icons.Filled.ErrorOutline
+        else -> Icons.Outlined.Mic
+    }
+
     Box(
         modifier = Modifier
             .size(160.dp)
             .scale(scale)
             .clip(CircleShape)
             .background(backgroundColor)
-            .clickable(onClick = onClick),
+            .clickable(enabled = isVoiceAvailable, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = if (isListening) Icons.Filled.Mic else Icons.Outlined.Mic,
-            contentDescription = if (isListening) "Fermati" else "Inizia ascolto",
-            modifier = Modifier.size(72.dp),
-            tint = iconColor
+        if (isThinking) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(80.dp),
+                color = iconColor,
+                strokeWidth = 4.dp
+            )
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = when {
+                    !isVoiceAvailable -> "Voce non disponibile"
+                    isListening -> "Fermati"
+                    else -> "Inizia ascolto"
+                },
+                modifier = Modifier.size(72.dp),
+                tint = iconColor
+            )
+        }
+    }
+}
+
+/**
+ * Area per mostrare trascrizione e risposta dell'assistente.
+ */
+@Composable
+private fun AssistantResponseArea(
+    assistantState: AssistantState,
+    transcription: String,
+    aiResponse: String,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 24.dp)
+    ) {
+        // Testo principale basato sullo stato
+        val displayText = when (assistantState) {
+            is AssistantState.Idle -> "Tocca per parlare"
+            is AssistantState.Listening -> "Sto ascoltando..."
+            is AssistantState.Recognizing -> transcription.ifEmpty { "..." }
+            is AssistantState.Thinking -> "Elaboro..."
+            is AssistantState.Speaking -> aiResponse
+            is AssistantState.WaitingConfirmation -> aiResponse
+            is AssistantState.Error -> aiResponse.ifEmpty { "Errore" }
+        }
+
+        Text(
+            text = displayText,
+            style = MaterialTheme.typography.bodyLarge,
+            color = when (assistantState) {
+                is AssistantState.Error -> MaterialTheme.colorScheme.error
+                is AssistantState.Speaking, is AssistantState.WaitingConfirmation ->
+                    MaterialTheme.colorScheme.onSurface
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            textAlign = TextAlign.Center,
+            maxLines = 4
         )
+
+        // Pulsanti di conferma se in attesa
+        if (assistantState is AssistantState.WaitingConfirmation) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("No")
+                }
+                Button(
+                    onClick = onConfirm,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AlertOk
+                    )
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Sì")
+                }
+            }
+        }
     }
 }
 
@@ -366,7 +484,7 @@ private fun StatusBar(
                 modifier = Modifier
                     .size(8.dp)
                     .clip(CircleShape)
-                    .background(if (isOnline) SuccessGreen else ErrorRed)
+                    .background(if (isOnline) AlertOk else AlertOverdue)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
@@ -375,7 +493,7 @@ private fun StatusBar(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        
+
         if (pendingSync > 0) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -397,13 +515,13 @@ private fun StatusBar(
                     Icons.Outlined.CloudDone,
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
-                    tint = SuccessGreen
+                    tint = AlertOk
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "Sincronizzato",
                     style = MaterialTheme.typography.labelSmall,
-                    color = SuccessGreen
+                    color = AlertOk
                 )
             }
         }
