@@ -83,13 +83,13 @@ object AiModule {
     @Singleton
     fun provideGenerativeModel(): GenerativeModel {
         return GenerativeModel(
-            modelName = "gemini-2.5-pro",
+            modelName = "gemini-2.5-flash",  // Stabile, veloce, function calling supportato
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
                 temperature = 0.7f
                 topK = 40
                 topP = 0.95f
-                maxOutputTokens = 1024
+                maxOutputTokens = 2048  // Aumentato per risposte complete
             },
             systemInstruction = content {
                 text(SYSTEM_INSTRUCTION)

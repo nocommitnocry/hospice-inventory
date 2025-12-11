@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -17,9 +19,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // VOICE STATE
@@ -359,7 +363,282 @@ class VoiceService @Inject constructor(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// VOICE ASSISTANT (Integrazione VoiceService + GeminiService)
+// TEXT TO SPEECH SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Stato del TTS.
+ */
+sealed class TtsState {
+    data object Idle : TtsState()
+    data object Initializing : TtsState()
+    data object Ready : TtsState()
+    data class Speaking(val text: String) : TtsState()
+    data class Error(val message: String) : TtsState()
+    data object Unavailable : TtsState()
+}
+
+/**
+ * Servizio per la sintesi vocale (Text-to-Speech).
+ * Utilizza Android TTS nativo - gratuito e funziona offline.
+ */
+@Singleton
+class TextToSpeechService @Inject constructor(
+    @ApplicationContext private val context: Context
+) : TextToSpeech.OnInitListener {
+
+    companion object {
+        private const val TAG = "TextToSpeechService"
+        private val ITALIAN_LOCALE = Locale.ITALIAN
+    }
+
+    private var tts: TextToSpeech? = null
+    private var isInitialized = false
+    private var utteranceId = 0
+
+    private val _state = MutableStateFlow<TtsState>(TtsState.Idle)
+    val state: StateFlow<TtsState> = _state.asStateFlow()
+
+    private val _isAvailable = MutableStateFlow(false)
+    val isAvailable: StateFlow<Boolean> = _isAvailable.asStateFlow()
+
+    // Callback per eventi TTS
+    var onSpeakingStart: (() -> Unit)? = null
+    var onSpeakingDone: (() -> Unit)? = null
+    var onError: ((String) -> Unit)? = null
+
+    /**
+     * Inizializza il servizio TTS.
+     */
+    fun initialize() {
+        if (isInitialized) return
+
+        _state.value = TtsState.Initializing
+        try {
+            tts = TextToSpeech(context, this)
+            Log.i(TAG, "TextToSpeech initialization started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create TextToSpeech", e)
+            _state.value = TtsState.Unavailable
+            _isAvailable.value = false
+        }
+    }
+
+    /**
+     * Callback di inizializzazione TTS.
+     */
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts?.setLanguage(ITALIAN_LOCALE)
+
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.w(TAG, "Italian language not supported, trying default")
+                // Prova con italiano generico
+                val fallbackResult = tts?.setLanguage(Locale("it"))
+                if (fallbackResult == TextToSpeech.LANG_MISSING_DATA || fallbackResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    Log.e(TAG, "Italian not available")
+                    _state.value = TtsState.Error("Italiano non disponibile per TTS")
+                    _isAvailable.value = false
+                    return
+                }
+            }
+
+            // Configura il listener per gli eventi
+            tts?.setOnUtteranceProgressListener(createUtteranceListener())
+
+            // Imposta velocità e tono (valori di default, personalizzabili)
+            tts?.setSpeechRate(1.0f)  // Velocità normale
+            tts?.setPitch(1.0f)      // Tono normale
+
+            isInitialized = true
+            _isAvailable.value = true
+            _state.value = TtsState.Ready
+            Log.i(TAG, "TextToSpeech initialized successfully")
+        } else {
+            Log.e(TAG, "TextToSpeech initialization failed: $status")
+            _state.value = TtsState.Unavailable
+            _isAvailable.value = false
+        }
+    }
+
+    /**
+     * Crea il listener per il progresso della sintesi.
+     */
+    private fun createUtteranceListener(): UtteranceProgressListener {
+        return object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                Log.d(TAG, "TTS started: $utteranceId")
+                onSpeakingStart?.invoke()
+            }
+
+            override fun onDone(utteranceId: String?) {
+                Log.d(TAG, "TTS done: $utteranceId")
+                _state.value = TtsState.Ready
+                onSpeakingDone?.invoke()
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {
+                Log.e(TAG, "TTS error: $utteranceId")
+                _state.value = TtsState.Error("Errore sintesi vocale")
+                onError?.invoke("Errore sintesi vocale")
+            }
+
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                val errorMessage = when (errorCode) {
+                    TextToSpeech.ERROR_SYNTHESIS -> "Errore sintesi"
+                    TextToSpeech.ERROR_SERVICE -> "Errore servizio TTS"
+                    TextToSpeech.ERROR_OUTPUT -> "Errore output audio"
+                    TextToSpeech.ERROR_NETWORK -> "Errore rete"
+                    TextToSpeech.ERROR_NETWORK_TIMEOUT -> "Timeout rete"
+                    TextToSpeech.ERROR_INVALID_REQUEST -> "Richiesta non valida"
+                    TextToSpeech.ERROR_NOT_INSTALLED_YET -> "TTS non installato"
+                    else -> "Errore sconosciuto ($errorCode)"
+                }
+                Log.e(TAG, "TTS error $errorCode: $errorMessage")
+                _state.value = TtsState.Error(errorMessage)
+                onError?.invoke(errorMessage)
+            }
+        }
+    }
+
+    /**
+     * Legge il testo ad alta voce.
+     * @param text Il testo da leggere
+     * @param flush Se true, interrompe qualsiasi sintesi in corso
+     */
+    fun speak(text: String, flush: Boolean = true) {
+        if (!isInitialized || !_isAvailable.value) {
+            Log.w(TAG, "TTS not available, cannot speak")
+            return
+        }
+
+        if (text.isBlank()) {
+            Log.w(TAG, "Empty text, nothing to speak")
+            return
+        }
+
+        val queueMode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        val id = "utterance_${++utteranceId}"
+
+        _state.value = TtsState.Speaking(text)
+
+        val params = Bundle().apply {
+            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, id)
+        }
+
+        val result = tts?.speak(text, queueMode, params, id)
+        if (result == TextToSpeech.ERROR) {
+            Log.e(TAG, "TTS speak failed")
+            _state.value = TtsState.Error("Impossibile leggere il testo")
+        }
+    }
+
+    /**
+     * Legge il testo e attende il completamento.
+     */
+    suspend fun speakAndWait(text: String): Boolean {
+        if (!isInitialized || !_isAvailable.value) {
+            return false
+        }
+
+        if (text.isBlank()) {
+            return true
+        }
+
+        return suspendCancellableCoroutine { continuation ->
+            val id = "utterance_${++utteranceId}"
+            _state.value = TtsState.Speaking(text)
+
+            val listener = object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {}
+
+                override fun onDone(utteranceId: String?) {
+                    if (utteranceId == id) {
+                        _state.value = TtsState.Ready
+                        continuation.resume(true)
+                    }
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) {
+                    if (utteranceId == id) {
+                        _state.value = TtsState.Ready
+                        continuation.resume(false)
+                    }
+                }
+
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    if (utteranceId == id) {
+                        _state.value = TtsState.Ready
+                        continuation.resume(false)
+                    }
+                }
+            }
+
+            tts?.setOnUtteranceProgressListener(listener)
+
+            val params = Bundle().apply {
+                putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, id)
+            }
+
+            val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, id)
+            if (result == TextToSpeech.ERROR) {
+                _state.value = TtsState.Ready
+                continuation.resume(false)
+            }
+
+            continuation.invokeOnCancellation {
+                stop()
+            }
+        }
+    }
+
+    /**
+     * Ferma la sintesi in corso.
+     */
+    fun stop() {
+        tts?.stop()
+        _state.value = TtsState.Ready
+    }
+
+    /**
+     * Imposta la velocità di lettura.
+     * @param rate 0.5 = metà velocità, 1.0 = normale, 2.0 = doppia velocità
+     */
+    fun setSpeechRate(rate: Float) {
+        tts?.setSpeechRate(rate.coerceIn(0.25f, 4.0f))
+    }
+
+    /**
+     * Imposta il tono della voce.
+     * @param pitch 0.5 = più basso, 1.0 = normale, 2.0 = più alto
+     */
+    fun setPitch(pitch: Float) {
+        tts?.setPitch(pitch.coerceIn(0.25f, 4.0f))
+    }
+
+    /**
+     * Verifica se sta parlando.
+     */
+    fun isSpeaking(): Boolean = tts?.isSpeaking == true
+
+    /**
+     * Rilascia le risorse.
+     */
+    fun release() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+        isInitialized = false
+        _state.value = TtsState.Idle
+        _isAvailable.value = false
+        Log.i(TAG, "TextToSpeechService released")
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VOICE ASSISTANT (Integrazione VoiceService + GeminiService + TTS)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -376,12 +655,13 @@ sealed class AssistantState {
 }
 
 /**
- * Assistente vocale che integra riconoscimento vocale e AI.
+ * Assistente vocale che integra riconoscimento vocale, AI e sintesi vocale.
  */
 @Singleton
 class VoiceAssistant @Inject constructor(
     private val voiceService: VoiceService,
-    private val geminiService: GeminiService
+    private val geminiService: GeminiService,
+    private val ttsService: TextToSpeechService
 ) {
     companion object {
         private const val TAG = "VoiceAssistant"
@@ -399,6 +679,9 @@ class VoiceAssistant @Inject constructor(
     private val _pendingAction = MutableStateFlow<AssistantAction?>(null)
     val pendingAction: StateFlow<AssistantAction?> = _pendingAction.asStateFlow()
 
+    private val _isTtsEnabled = MutableStateFlow(true)
+    val isTtsEnabled: StateFlow<Boolean> = _isTtsEnabled.asStateFlow()
+
     /**
      * Callback quando un'azione deve essere eseguita dalla UI.
      */
@@ -409,6 +692,7 @@ class VoiceAssistant @Inject constructor(
      */
     fun initialize() {
         voiceService.initialize()
+        ttsService.initialize()
 
         // Configura callback dal VoiceService
         voiceService.onResult = { text ->
@@ -421,6 +705,23 @@ class VoiceAssistant @Inject constructor(
 
         voiceService.onPartialResult = { partial ->
             _state.value = AssistantState.Recognizing(partial)
+        }
+
+        // Configura callback TTS
+        ttsService.onSpeakingDone = {
+            if (_state.value is AssistantState.Speaking) {
+                _state.value = AssistantState.Idle
+            }
+        }
+    }
+
+    /**
+     * Abilita/disabilita il TTS.
+     */
+    fun setTtsEnabled(enabled: Boolean) {
+        _isTtsEnabled.value = enabled
+        if (!enabled) {
+            ttsService.stop()
         }
     }
 
@@ -480,13 +781,13 @@ class VoiceAssistant @Inject constructor(
             is GeminiResult.Success -> {
                 _lastResponse.value = result.response
                 _state.value = AssistantState.Speaking(result.response)
-                // Dopo un po' torna a Idle
-                resetToIdleAfterDelay()
+                speakResponse(result.response)
             }
 
             is GeminiResult.Error -> {
                 _lastResponse.value = result.message
                 _state.value = AssistantState.Error(result.message)
+                speakResponse(result.message)
             }
 
             is GeminiResult.ActionRequired -> {
@@ -494,17 +795,41 @@ class VoiceAssistant @Inject constructor(
                 _pendingAction.value = result.action
                 _state.value = AssistantState.Speaking(result.response)
 
+                // Parla la risposta
+                speakResponse(result.response)
+
                 // Notifica la UI per eseguire l'azione
                 onActionRequired?.invoke(result.action)
-                resetToIdleAfterDelay()
             }
 
             is GeminiResult.ConfirmationNeeded -> {
-                _lastResponse.value = "${result.response}\n\n${result.confirmationMessage}"
+                val fullMessage = "${result.response}\n\n${result.confirmationMessage}"
+                _lastResponse.value = fullMessage
                 _pendingAction.value = result.action
                 _state.value = AssistantState.WaitingConfirmation(result.confirmationMessage)
+                speakResponse(fullMessage)
             }
         }
+    }
+
+    /**
+     * Parla la risposta usando TTS se abilitato.
+     */
+    private fun speakResponse(text: String) {
+        if (_isTtsEnabled.value && ttsService.isAvailable.value) {
+            ttsService.speak(text)
+        } else {
+            // Se TTS disabilitato, torna a Idle dopo un delay
+            resetToIdleAfterDelay()
+        }
+    }
+
+    /**
+     * Ferma il TTS se sta parlando.
+     */
+    fun stopSpeaking() {
+        ttsService.stop()
+        _state.value = AssistantState.Idle
     }
 
     /**
@@ -551,11 +876,17 @@ class VoiceAssistant @Inject constructor(
     fun release() {
         scope.cancel()
         voiceService.release()
+        ttsService.release()
         geminiService.resetContext()
     }
 
     /**
-     * Verifica se l'assistente è disponibile.
+     * Verifica se l'assistente vocale (STT) è disponibile.
      */
     fun isAvailable(): Boolean = voiceService.isAvailable.value
+
+    /**
+     * Verifica se il TTS è disponibile.
+     */
+    fun isTtsAvailable(): Boolean = ttsService.isAvailable.value
 }
