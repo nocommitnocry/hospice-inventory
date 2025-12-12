@@ -206,27 +206,54 @@ data class MaintenanceEntity(
 ### Enums
 
 ```kotlin
-enum class MaintenanceFrequency(val days: Int) {
-    TRIMESTRALE(90),
-    SEMESTRALE(180),
-    ANNUALE(365),
-    BIENNALE(730),
-    TRIENNALE(1095),
-    QUADRIENNALE(1460),
-    QUINQUENNALE(1825),
-    CUSTOM(0)  // Usa maintenanceIntervalDays
+enum class MaintenanceFrequency(val days: Int, val label: String) {
+    TRIMESTRALE(90, "Trimestrale (3 mesi)"),
+    SEMESTRALE(180, "Semestrale (6 mesi)"),
+    ANNUALE(365, "Annuale"),
+    BIENNALE(730, "Biennale (2 anni)"),
+    TRIENNALE(1095, "Triennale (3 anni)"),
+    QUADRIENNALE(1460, "Quadriennale (4 anni)"),
+    QUINQUENNALE(1825, "Quinquennale (5 anni)"),
+    CUSTOM(0, "Personalizzata")  // Usa maintenanceIntervalDays
 }
 
-enum class AccountType { PROPRIETA, NOLEGGIO, COMODATO, LEASING }
-
-enum class MaintenanceType {
-    PROGRAMMATA, STRAORDINARIA, VERIFICA, INSTALLAZIONE,
-    DISMISSIONE, RIPARAZIONE, SOSTITUZIONE
+enum class AccountType(val label: String) {
+    PROPRIETA("Proprietà"), NOLEGGIO("Noleggio"),
+    COMODATO("Comodato d'uso"), LEASING("Leasing")
 }
 
-enum class MaintenanceOutcome {
-    RIPRISTINATO, PARZIALE, GUASTO, IN_ATTESA_RICAMBI,
-    IN_ATTESA_TECNICO, DISMESSO, SOSTITUITO, NON_NECESSARIO
+// MaintenanceType con supporto matching vocale
+enum class MaintenanceType(
+    val label: String,
+    val displayName: String,
+    val metaCategory: MetaCategory,
+    val synonyms: List<String>
+) {
+    PROGRAMMATA("Programmata", "Manutenzione programmata", ORDINARIA,
+        listOf("programmata", "periodica", "schedulata")),
+    VERIFICA("Verifica/Controllo", "Verifica periodica", ORDINARIA,
+        listOf("verifica", "controllo", "check", "ispezione")),
+    RIPARAZIONE("Riparazione", "Riparazione", STRAORDINARIA,
+        listOf("riparazione", "riparato", "aggiustato", "sistemato")),
+    SOSTITUZIONE("Sostituzione componente", "Sostituzione", STRAORDINARIA,
+        listOf("sostituzione", "sostituito", "cambiato")),
+    INSTALLAZIONE("Installazione", "Installazione", LIFECYCLE,
+        listOf("installazione", "installato", "montato")),
+    COLLAUDO("Collaudo", "Collaudo", LIFECYCLE,
+        listOf("collaudo", "collaudato", "test iniziale")),
+    DISMISSIONE("Dismissione", "Dismissione", LIFECYCLE,
+        listOf("dismissione", "dismesso", "smontato", "buttato")),
+    STRAORDINARIA("Straordinaria", "Intervento straordinario", STRAORDINARIA,
+        listOf("straordinaria", "urgente", "emergenza"));
+
+    enum class MetaCategory { ORDINARIA, STRAORDINARIA, LIFECYCLE }
+}
+
+enum class MaintenanceOutcome(val label: String) {
+    RIPRISTINATO("Ripristinato/Funzionante"), PARZIALE("Parzialmente risolto"),
+    GUASTO("Ancora guasto"), IN_ATTESA_RICAMBI("In attesa ricambi"),
+    IN_ATTESA_TECNICO("In attesa tecnico"), DISMESSO("Dismesso"),
+    SOSTITUITO("Sostituito"), NON_NECESSARIO("Intervento non necessario")
 }
 
 enum class SyncStatus { SYNCED, PENDING, CONFLICT }
@@ -288,43 +315,86 @@ fun calculateNextMaintenanceDue(
 
 ## 🎤 Voice Interface
 
-### Gemini System Prompt
+### Architettura Servizi Vocali
 
-```kotlin
-const val SYSTEM_INSTRUCTION = """
-Sei l'assistente vocale di Hospice Inventory, un'app per la gestione 
-dell'inventario e delle manutenzioni dell'Hospice di Abbiategrasso.
-
-Il tuo ruolo è:
-1. Aiutare a cercare prodotti nell'inventario
-2. Registrare manutenzioni
-3. Preparare richieste di intervento via email
-4. Informare sulle scadenze di manutenzioni e garanzie
-5. Guidare nell'inserimento di nuovi prodotti
-
-Rispondi sempre in italiano, in modo conciso e naturale.
-Se devi confermare un'azione importante (invio email, eliminazione), 
-chiedi sempre conferma.
-
-Quando un prodotto è in garanzia, ricorda che il manutentore è il fornitore.
-Quando la garanzia è scaduta, suggerisci il manutentore di servizio.
-"""
+```
+VoiceAssistantManager (orchestratore)
+├── VoiceService (STT - Speech-to-Text)
+├── TtsService (Text-to-Speech)
+└── GeminiService (AI + Action Parsing)
+    └── ConversationContext (stato conversazionale)
+        ├── recentExchanges (ultimi 6 turni)
+        ├── activeTask (task multi-step in corso)
+        └── speakerHint (manutentore vs operatore)
 ```
 
-### Function Calling Tools (da implementare)
+### Action Tags (implementato)
+
+Gemini risponde con tag `[ACTION:tipo:parametri]` che vengono parsati:
 
 ```kotlin
-// Tools per Gemini
-val tools = listOf(
-    Tool("search_product", "Cerca prodotti per nome, categoria, ubicazione o barcode"),
-    Tool("get_product", "Recupera dettagli di un prodotto specifico"),
-    Tool("add_maintenance", "Registra un nuovo intervento di manutenzione"),
-    Tool("send_email", "Prepara e invia email al manutentore"),
-    Tool("scan_barcode", "Attiva lo scanner barcode"),
-    Tool("take_photo", "Scatta foto del prodotto"),
-    Tool("get_alerts", "Recupera manutenzioni in scadenza"),
-    Tool("create_product", "Crea un nuovo prodotto")
+// Azioni disponibili
+- SEARCH:query                    // Cerca prodotti
+- SHOW:productId                  // Mostra dettaglio
+- CREATE:campo=valore,campo2=val  // Nuovo prodotto con prefill
+- START_PRODUCT_CREATION          // Avvia creazione guidata
+- START_MAINTENANCE:id:nome       // Avvia registrazione manutenzione
+- MAINTENANCE_LIST:filtro         // Lista manutenzioni
+- EMAIL:productId:descrizione     // Email manutentore
+- SCAN:motivo                     // Scanner barcode
+- ALERTS                          // Mostra scadenze
+```
+
+### Contesto Conversazionale Multi-Turno
+
+```kotlin
+data class ConversationContext(
+    val currentProduct: Product? = null,
+    val lastSearchResults: List<Product> = emptyList(),
+    val pendingAction: AssistantAction? = null,
+    val awaitingConfirmation: Boolean = false,
+
+    // Contesto conversazionale
+    val activeTask: ActiveTask? = null,     // Task multi-step
+    val recentExchanges: List<ChatExchange>, // Max 6 turni
+    val speakerHint: SpeakerHint            // Manutentore/Operatore
 )
+```
+
+### Task Multi-Step (ActiveTask)
+
+Per flussi guidati come creazione prodotto o registrazione manutenzione:
+
+```kotlin
+sealed class ActiveTask {
+    data class ProductCreation(
+        val name: String?, val category: String?,
+        val brand: String?, val location: String?, ...
+    ) : ActiveTask()
+
+    data class MaintenanceRegistration(
+        val productId: String, val productName: String,
+        val type: MaintenanceType?, val description: String?, ...
+    ) : ActiveTask()
+
+    data class MaintainerCreation(...) : ActiveTask()
+}
+```
+
+### Inferenza Speaker
+
+L'app inferisce chi sta parlando dai pattern linguistici:
+- **LIKELY_MAINTAINER**: "Ho riparato...", "Sono di Tecnomed"
+- **LIKELY_OPERATOR**: "Il tecnico ha fatto...", "È venuto..."
+
+Se manutentore → non chiede "chi ha fatto l'intervento"
+
+### STT Timeout (estesi)
+
+```kotlin
+EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS = 5000L      // 5s
+EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS = 3000L  // 3s
+EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS = 2000L
 ```
 
 ---
@@ -497,34 +567,69 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 ## 📋 TODO / Checklist
 
 ### ✅ Completato
+
+#### Infrastruttura
 - [x] Gradle setup con version catalog
 - [x] Room entities (Product, Maintainer, Maintenance, etc.)
 - [x] Room DAOs con tutte le query
 - [x] Database + TypeConverters
-- [x] Domain models + Enums
+- [x] Domain models + Enums (con synonyms e metaCategory per MaintenanceType)
 - [x] Hilt DI modules
 - [x] Theme (colori, typography)
 - [x] Navigation setup
-- [x] HomeScreen + ViewModel
 - [x] Resources (strings, colors)
 
+#### Schermate UI
+- [x] **HomeScreen** + HomeViewModel
+- [x] **SearchScreen** + SearchViewModel - Ricerca prodotti con filtri
+- [x] **ProductDetailScreen** + ProductDetailViewModel - Dettaglio con storico manutenzioni
+- [x] **ProductEditScreen** + ProductEditViewModel - Form creazione/modifica
+- [x] **MaintenanceListScreen** + MaintenanceListViewModel - Lista scadenze
+- [x] **MaintenanceEditScreen** - Registra intervento
+- [x] **SettingsScreen** - Configurazioni
+
+#### Componenti UI
+- [x] VoiceButton - Pulsante vocale con animazioni
+- [x] StatusBar - Indicatore online/offline + sync
+- [x] SearchBar - Barra ricerca
+- [x] ProductCard - Card prodotto
+- [x] AlertBanner - Banner alert scadenze
+- [x] MaintenanceCard - Card manutenzione
+
+#### Repository Layer
+- [x] **ProductRepository** - CRUD prodotti + query scadenze
+- [x] **MaintainerRepository** - CRUD manutentori
+- [x] **MaintenanceRepository** - CRUD manutenzioni
+
+#### Servizi Vocali
+- [x] **VoiceService** - Speech-to-Text (Google Speech Recognition)
+- [x] **TtsService** - Text-to-Speech
+- [x] **GeminiService** - AI con function calling, rate limiting, audit logging
+- [x] **ConversationContext** - Contesto conversazionale multi-turno
+- [x] **ActiveTask** - Task multi-step (ProductCreation, MaintenanceRegistration, MaintainerCreation)
+- [x] **SpeakerInference** - Inferenza manutentore vs operatore
+- [x] **UserIntentDetector** - Rilevamento "basta così", "annulla"
+- [x] **EnumMatcher** - Matching fuzzy per categorie/tipi
+
+#### Dati Demo
+- [x] **SampleDataPopulator** - Dati di test per sviluppo
+
 ### 🔲 Da Fare
-- [ ] **SearchScreen** - Ricerca prodotti con filtri
-- [ ] **ProductDetailScreen** - Dettaglio con storico manutenzioni
-- [ ] **ProductEditScreen** - Form creazione/modifica
-- [ ] **MaintenanceListScreen** - Lista scadenze
-- [ ] **MaintenanceEditScreen** - Registra intervento
-- [ ] **SettingsScreen** - Configurazioni
-- [ ] **Repository layer** - ProductRepository, etc.
-- [ ] **Excel Import** - Parser per dati iniziali
-- [ ] **VoiceService** - Speech-to-Text integration
-- [ ] **GeminiService** - AI con function calling
-- [ ] **BarcodeScanner** - ML Kit integration
-- [ ] **CameraCapture** - Foto prodotti
-- [ ] **EmailService** - Gmail API
-- [ ] **NotificationWorker** - Alert scadenze
-- [ ] **SyncWorker** - Firebase sync
-- [ ] **Offline queue** - Email queue
+
+#### Import/Export
+- [ ] **Excel Import** - Parser per dati iniziali (Inventario.xlsx)
+
+#### Hardware Integration
+- [ ] **BarcodeScanner** - ML Kit Barcode Scanning
+- [ ] **CameraCapture** - Foto prodotti con CameraX
+
+#### Comunicazione
+- [ ] **EmailService** - Invio email manutentori (Gmail API o Intent)
+
+#### Background Tasks
+- [ ] **NotificationWorker** - Alert scadenze manutenzioni
+- [ ] **SyncWorker** - Sincronizzazione Firebase
+- [ ] **Offline queue** - Coda email offline
 
 ---
 
