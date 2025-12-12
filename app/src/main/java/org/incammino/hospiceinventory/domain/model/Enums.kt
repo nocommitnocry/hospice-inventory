@@ -31,16 +31,88 @@ enum class AccountType(val label: String) {
 }
 
 /**
- * Tipo di intervento di manutenzione
+ * Tipo di intervento di manutenzione.
+ *
+ * @property label Nome visualizzato
+ * @property displayName Nome esteso per prompt vocali
+ * @property metaCategory Categoria superiore (ordinaria/straordinaria/lifecycle)
+ * @property synonyms Sinonimi per il matching vocale
  */
-enum class MaintenanceType(val label: String) {
-    PROGRAMMATA("Programmata"),
-    STRAORDINARIA("Straordinaria"),
-    VERIFICA("Verifica/Controllo"),
-    INSTALLAZIONE("Installazione"),
-    DISMISSIONE("Dismissione"),
-    RIPARAZIONE("Riparazione"),
-    SOSTITUZIONE("Sostituzione componente")
+enum class MaintenanceType(
+    val label: String,
+    val displayName: String,
+    val metaCategory: MetaCategory,
+    val synonyms: List<String>
+) {
+    PROGRAMMATA(
+        label = "Programmata",
+        displayName = "Manutenzione programmata",
+        metaCategory = MetaCategory.ORDINARIA,
+        synonyms = listOf("programmata", "periodica", "schedulata", "prevista")
+    ),
+    VERIFICA(
+        label = "Verifica/Controllo",
+        displayName = "Verifica periodica",
+        metaCategory = MetaCategory.ORDINARIA,
+        synonyms = listOf("verifica", "controllo", "check", "ispezione", "sopralluogo")
+    ),
+    RIPARAZIONE(
+        label = "Riparazione",
+        displayName = "Riparazione",
+        metaCategory = MetaCategory.STRAORDINARIA,
+        synonyms = listOf("riparazione", "riparato", "aggiustato", "sistemato", "riparare", "aggiustare")
+    ),
+    SOSTITUZIONE(
+        label = "Sostituzione componente",
+        displayName = "Sostituzione",
+        metaCategory = MetaCategory.STRAORDINARIA,
+        synonyms = listOf("sostituzione", "sostituito", "cambiato", "rimpiazzato", "sostituire", "cambiare")
+    ),
+    INSTALLAZIONE(
+        label = "Installazione",
+        displayName = "Installazione",
+        metaCategory = MetaCategory.LIFECYCLE,
+        synonyms = listOf("installazione", "installato", "montato", "messo", "installare", "montare")
+    ),
+    COLLAUDO(
+        label = "Collaudo",
+        displayName = "Collaudo",
+        metaCategory = MetaCategory.LIFECYCLE,
+        synonyms = listOf("collaudo", "collaudato", "test iniziale", "prima verifica")
+    ),
+    DISMISSIONE(
+        label = "Dismissione",
+        displayName = "Dismissione",
+        metaCategory = MetaCategory.LIFECYCLE,
+        synonyms = listOf("dismissione", "dismesso", "smontato", "buttato", "rimosso", "smantellato")
+    ),
+    STRAORDINARIA(
+        label = "Straordinaria",
+        displayName = "Intervento straordinario",
+        metaCategory = MetaCategory.STRAORDINARIA,
+        synonyms = listOf("straordinaria", "urgente", "emergenza", "imprevisto")
+    );
+
+    /**
+     * Meta-categoria per raggruppamento tipi manutenzione.
+     */
+    enum class MetaCategory(val label: String) {
+        /** Manutenzioni regolari pianificate */
+        ORDINARIA("Ordinaria"),
+        /** Interventi non pianificati (guasti, emergenze) */
+        STRAORDINARIA("Straordinaria"),
+        /** Eventi del ciclo di vita del prodotto */
+        LIFECYCLE("Ciclo di vita")
+    }
+
+    companion object {
+        /**
+         * Trova tutti i tipi di una meta-categoria.
+         */
+        fun byMetaCategory(metaCategory: MetaCategory): List<MaintenanceType> {
+            return entries.filter { it.metaCategory == metaCategory }
+        }
+    }
 }
 
 /**

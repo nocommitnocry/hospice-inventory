@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import org.incammino.hospiceinventory.data.repository.ProductRepository
+import org.incammino.hospiceinventory.domain.model.MaintenanceType
 import org.incammino.hospiceinventory.domain.model.Product
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -104,16 +105,8 @@ sealed class AssistantAction {
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONTEXT
 // ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Contesto della conversazione per risposte più accurate.
- */
-data class ConversationContext(
-    val currentProduct: Product? = null,
-    val lastSearchResults: List<Product> = emptyList(),
-    val pendingAction: AssistantAction? = null,
-    val awaitingConfirmation: Boolean = false
-)
+// ConversationContext, ActiveTask, ChatExchange, SpeakerHint, SpeakerInference,
+// UserIntentDetector ed EnumMatcher sono definiti in ConversationContext.kt
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INPUT SANITIZER
@@ -373,7 +366,7 @@ class GeminiService @Inject constructor(
 
     /**
      * Processa un messaggio dell'utente e restituisce una risposta.
-     * Include sanitizzazione, rate limiting e gestione conferme.
+     * Include sanitizzazione, rate limiting, gestione conferme e contesto conversazionale.
      */
     suspend fun processMessage(userMessage: String): GeminiResult {
         // 1. Rate limiting
@@ -408,15 +401,59 @@ class GeminiService @Inject constructor(
             }
         }
 
-        // 3. Log richiesta
+        // 3. Log richiesta e registra scambio
         AuditLogger.logRequest(sanitizedMessage, isSuspicious)
+        conversationContext = conversationContext.addExchange(
+            ChatExchange(Role.USER, sanitizedMessage)
+        )
 
-        // 4. Gestione conferma pendente
+        // 4. Inferenza speaker (manutentore vs operatore)
+        val inferredSpeaker = SpeakerInference.infer(sanitizedMessage)
+        if (inferredSpeaker != SpeakerHint.UNKNOWN) {
+            conversationContext = conversationContext.copy(
+                speakerHint = SpeakerInference.updateHint(
+                    conversationContext.speakerHint,
+                    inferredSpeaker
+                )
+            )
+            Log.d(TAG, "Speaker hint updated: ${conversationContext.speakerHint}")
+        }
+
+        // 5. Gestione conferma pendente
         if (conversationContext.awaitingConfirmation && conversationContext.pendingAction != null) {
             return handleConfirmationResponse(sanitizedMessage)
         }
 
-        // 5. Processa con Gemini
+        // 6. Rileva intent utente (basta così, annulla, continua)
+        val userIntent = UserIntentDetector.detect(sanitizedMessage)
+
+        // 7. Gestione task attivo
+        if (conversationContext.hasActiveTask()) {
+            when (userIntent) {
+                UserIntentDetector.UserIntent.CANCEL -> {
+                    val taskType = conversationContext.activeTask?.let { it::class.simpleName } ?: "task"
+                    conversationContext = conversationContext.copy(activeTask = null)
+                    return addAssistantExchangeAndReturn(
+                        GeminiResult.Success("Ok, ho annullato il $taskType. Come posso aiutarti?")
+                    )
+                }
+                UserIntentDetector.UserIntent.PROCEED -> {
+                    if (conversationContext.isActiveTaskComplete()) {
+                        return completeActiveTask()
+                    } else {
+                        val missing = conversationContext.activeTask?.requiredMissing?.joinToString(", ")
+                        return addAssistantExchangeAndReturn(
+                            GeminiResult.Success("Mi mancano ancora: $missing. Vuoi fornirli o procedere comunque?")
+                        )
+                    }
+                }
+                UserIntentDetector.UserIntent.CONTINUE -> {
+                    // Continua normalmente con Gemini per estrarre dati
+                }
+            }
+        }
+
+        // 8. Processa con Gemini
         return withContext(Dispatchers.IO) {
             try {
                 val contextPrompt = buildContextPrompt()
@@ -432,6 +469,11 @@ class GeminiService @Inject constructor(
 
                 // Estrai eventuali azioni dalla risposta
                 val (cleanResponse, action) = parseResponse(responseText)
+
+                // Registra risposta assistente
+                conversationContext = conversationContext.addExchange(
+                    ChatExchange(Role.ASSISTANT, cleanResponse)
+                )
 
                 when {
                     action == null -> GeminiResult.Success(cleanResponse)
@@ -464,30 +506,207 @@ class GeminiService @Inject constructor(
     }
 
     /**
+     * Aggiunge uno scambio assistente e restituisce il risultato.
+     */
+    private fun addAssistantExchangeAndReturn(result: GeminiResult): GeminiResult {
+        val message = when (result) {
+            is GeminiResult.Success -> result.response
+            is GeminiResult.ActionRequired -> result.response
+            is GeminiResult.ConfirmationNeeded -> result.response
+            is GeminiResult.Error -> result.message
+        }
+        conversationContext = conversationContext.addExchange(
+            ChatExchange(Role.ASSISTANT, message)
+        )
+        return result
+    }
+
+    /**
+     * Completa il task attivo e restituisce l'azione appropriata.
+     */
+    private fun completeActiveTask(): GeminiResult {
+        val task = conversationContext.activeTask ?: return GeminiResult.Success("Nessun task attivo.")
+
+        return when (task) {
+            is ActiveTask.ProductCreation -> {
+                val prefillData = buildMap {
+                    task.name?.let { put("name", it) }
+                    task.category?.let { put("category", it) }
+                    task.brand?.let { put("brand", it) }
+                    task.model?.let { put("model", it) }
+                    task.location?.let { put("location", it) }
+                    task.purchaseDate?.let { put("purchaseDate", it.toString()) }
+                    task.warrantyMonths?.let { put("warrantyMonths", it.toString()) }
+                    task.barcode?.let { put("barcode", it) }
+                    task.notes?.let { put("notes", it) }
+                }
+                conversationContext = conversationContext.copy(activeTask = null)
+                addAssistantExchangeAndReturn(
+                    GeminiResult.ActionRequired(
+                        AssistantAction.CreateProduct(prefillData),
+                        "Perfetto! Apro la schermata di creazione prodotto con i dati raccolti."
+                    )
+                )
+            }
+            is ActiveTask.MaintenanceRegistration -> {
+                // Per ora restituisce un messaggio, in futuro implementeremo l'azione
+                conversationContext = conversationContext.copy(activeTask = null)
+                addAssistantExchangeAndReturn(
+                    GeminiResult.Success(
+                        "Manutenzione pronta per la registrazione:\n${task.toCollectedDataString()}"
+                    )
+                )
+            }
+            is ActiveTask.MaintainerCreation -> {
+                conversationContext = conversationContext.copy(activeTask = null)
+                addAssistantExchangeAndReturn(
+                    GeminiResult.Success(
+                        "Manutentore pronto per la registrazione:\n${task.toCollectedDataString()}"
+                    )
+                )
+            }
+        }
+    }
+
+    /**
      * Costruisce il prompt di contesto per Gemini.
+     * Include cronologia conversazione, task attivo e contesto prodotto.
      */
     private fun buildPrompt(
         contextPrompt: String,
         userMessage: String,
         @Suppress("UNUSED_PARAMETER") isSuspicious: Boolean
     ): String {
+        val conversationHistory = buildConversationHistoryPrompt()
+        val activeTaskPrompt = buildActiveTaskPrompt()
+        val speakerHintPrompt = buildSpeakerHintPrompt()
+
         return """
+            |SISTEMA: Sei l'assistente vocale di Hospice Inventory per l'Hospice di Abbiategrasso.
+            |Rispondi sempre in italiano, in modo conciso e naturale.
+            |
             |$contextPrompt
+            |$conversationHistory
+            |$activeTaskPrompt
+            |$speakerHintPrompt
             |
-            |UTENTE: $userMessage
+            |MESSAGGIO UTENTE: $userMessage
             |
-            |Rispondi in modo naturale e conciso. Se serve un'azione, aggiungi il tag:
-            |[ACTION:tipo:parametri]
+            |ISTRUZIONI:
+            |1. Se c'è un TASK IN CORSO, estrai TUTTI i dati possibili dal messaggio
+            |2. Per campi enum (categoria, tipo manutenzione): se ambiguo, chiedi scelta
+            |3. Se l'utente corregge un dato precedente, aggiorna
+            |4. Rispondi in modo naturale e conciso
+            |
+            |Se serve un'azione, aggiungi il tag: [ACTION:tipo:parametri]
             |
             |Azioni disponibili:
             |- SEARCH:query - Cerca prodotti
-            |- SHOW:productId - Mostra dettaglio
-            |- CREATE:campo=valore - Nuovo prodotto
+            |- SHOW:productId - Mostra dettaglio prodotto
+            |- CREATE:campo=valore,campo2=valore2 - Nuovo prodotto
+            |- START_PRODUCT_CREATION - Avvia creazione prodotto guidata
+            |- START_MAINTENANCE:productId:productName - Avvia registrazione manutenzione
             |- MAINTENANCE_LIST:filtro - Lista manutenzioni
             |- EMAIL:productId:descrizione - Email manutentore
             |- SCAN:motivo - Scanner barcode
-            |- ALERTS - Scadenze
+            |- ALERTS - Mostra scadenze
         """.trimMargin()
+    }
+
+    /**
+     * Costruisce la sezione del prompt con la cronologia conversazione.
+     */
+    private fun buildConversationHistoryPrompt(): String {
+        if (conversationContext.recentExchanges.isEmpty()) {
+            return ""
+        }
+
+        val history = conversationContext.recentExchanges
+            .dropLast(1) // L'ultimo messaggio utente è già nel prompt principale
+            .takeLast(5) // Max 5 scambi precedenti
+            .joinToString("\n") { exchange ->
+                val role = if (exchange.role == Role.USER) "UTENTE" else "ASSISTENTE"
+                "$role: ${exchange.content}"
+            }
+
+        return if (history.isNotBlank()) {
+            """
+            |
+            |CONVERSAZIONE RECENTE:
+            |$history
+            """.trimMargin()
+        } else ""
+    }
+
+    /**
+     * Costruisce la sezione del prompt per il task attivo.
+     */
+    private fun buildActiveTaskPrompt(): String {
+        val task = conversationContext.activeTask ?: return ""
+
+        return when (task) {
+            is ActiveTask.ProductCreation -> """
+                |
+                |TASK IN CORSO: Creazione nuovo prodotto
+                |DATI GIÀ RACCOLTI:
+                |${task.toCollectedDataString()}
+                |CAMPI OBBLIGATORI MANCANTI: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+                |CAMPI OPZIONALI MANCANTI: ${task.optionalMissing.joinToString(", ")}
+                |
+                |ISTRUZIONI TASK:
+                |- Estrai TUTTI i campi identificabili dal messaggio utente
+                |- Se l'utente dice "basta/così/procedi", non estrarre altri dati
+                |- Categorie valide: Apparecchiatura elettromedicale, Attrezzatura sanitaria, Arredo, Informatica, Altro
+                |- Ubicazioni: usa il formato fornito dall'utente (es. "stanza 12", "magazzino")
+            """.trimMargin()
+
+            is ActiveTask.MaintenanceRegistration -> """
+                |
+                |TASK IN CORSO: Registrazione manutenzione per ${task.productName}
+                |DATI GIÀ RACCOLTI:
+                |${task.toCollectedDataString()}
+                |CAMPI OBBLIGATORI MANCANTI: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+                |
+                |ISTRUZIONI TASK:
+                |- Estrai tipo intervento, descrizione, chi l'ha fatto, costo se menzionato
+                |- Tipi validi: Programmata, Verifica, Riparazione, Sostituzione, Installazione, Collaudo, Dismissione, Straordinaria
+                |- Se utente dice "ordinaria" chiedi: "Verifica periodica o manutenzione programmata?"
+                |- Se utente dice "straordinaria" chiedi il tipo specifico
+            """.trimMargin()
+
+            is ActiveTask.MaintainerCreation -> """
+                |
+                |TASK IN CORSO: Creazione nuovo manutentore/fornitore
+                |DATI GIÀ RACCOLTI:
+                |${task.toCollectedDataString()}
+                |CAMPI OBBLIGATORI MANCANTI: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+                |
+                |ISTRUZIONI TASK:
+                |- Estrai nome/azienda, contatti (email, telefono), indirizzo se fornito
+                |- Chiedi se è anche fornitore oltre che manutentore
+            """.trimMargin()
+        }
+    }
+
+    /**
+     * Costruisce la sezione del prompt per lo speaker hint.
+     */
+    private fun buildSpeakerHintPrompt(): String {
+        return when (conversationContext.speakerHint) {
+            SpeakerHint.LIKELY_MAINTAINER -> """
+                |
+                |NOTA: L'utente sembra essere il MANUTENTORE stesso (parla in prima persona).
+                |Non chiedere "chi ha fatto l'intervento" - è implicito che sia lui.
+            """.trimMargin()
+
+            SpeakerHint.LIKELY_OPERATOR -> """
+                |
+                |NOTA: L'utente sembra essere un OPERATORE dell'hospice (parla in terza persona).
+                |Chiedi chi ha eseguito l'intervento se non specificato.
+            """.trimMargin()
+
+            SpeakerHint.UNKNOWN -> ""
+        }
     }
 
     /**
@@ -742,6 +961,19 @@ class GeminiService @Inject constructor(
                 } else null
                 AssistantAction.CreateProduct(prefill)
             }
+            "START_PRODUCT_CREATION" -> {
+                // Avvia un task di creazione prodotto guidata
+                startProductCreationTask()
+                null // Nessuna azione esterna, gestito internamente
+            }
+            "START_MAINTENANCE" -> {
+                // Avvia un task di registrazione manutenzione
+                val parts = actionParams.split(":", limit = 2)
+                if (parts.size >= 2) {
+                    startMaintenanceTask(parts[0], parts[1])
+                }
+                null // Nessuna azione esterna, gestito internamente
+            }
             "MAINTENANCE_LIST" -> AssistantAction.ShowMaintenanceList(
                 actionParams.takeIf { it.isNotBlank() }
             )
@@ -759,6 +991,74 @@ class GeminiService @Inject constructor(
 
         return cleanResponse to action
     }
+
+    /**
+     * Avvia un task di creazione prodotto guidata.
+     */
+    private fun startProductCreationTask() {
+        conversationContext = conversationContext.copy(
+            activeTask = ActiveTask.ProductCreation()
+        )
+        Log.d(TAG, "Started ProductCreation task")
+    }
+
+    /**
+     * Avvia un task di registrazione manutenzione.
+     */
+    private fun startMaintenanceTask(productId: String, productName: String) {
+        conversationContext = conversationContext.copy(
+            activeTask = ActiveTask.MaintenanceRegistration(
+                productId = productId,
+                productName = productName
+            )
+        )
+        Log.d(TAG, "Started MaintenanceRegistration task for product: $productName")
+    }
+
+    /**
+     * Aggiorna il task attivo con nuovi dati estratti.
+     * Chiamato quando Gemini estrae campi dal messaggio utente.
+     */
+    fun updateActiveTask(updates: Map<String, Any?>) {
+        val currentTask = conversationContext.activeTask ?: return
+
+        val updatedTask = when (currentTask) {
+            is ActiveTask.ProductCreation -> currentTask.copy(
+                name = updates["name"] as? String ?: currentTask.name,
+                category = updates["category"] as? String ?: currentTask.category,
+                brand = updates["brand"] as? String ?: currentTask.brand,
+                model = updates["model"] as? String ?: currentTask.model,
+                location = updates["location"] as? String ?: currentTask.location,
+                barcode = updates["barcode"] as? String ?: currentTask.barcode,
+                notes = updates["notes"] as? String ?: currentTask.notes
+            )
+            is ActiveTask.MaintenanceRegistration -> currentTask.copy(
+                type = updates["type"] as? MaintenanceType ?: currentTask.type,
+                description = updates["description"] as? String ?: currentTask.description,
+                performedBy = updates["performedBy"] as? String ?: currentTask.performedBy,
+                cost = updates["cost"] as? Double ?: currentTask.cost
+            )
+            is ActiveTask.MaintainerCreation -> currentTask.copy(
+                name = updates["name"] as? String ?: currentTask.name,
+                company = updates["company"] as? String ?: currentTask.company,
+                email = updates["email"] as? String ?: currentTask.email,
+                phone = updates["phone"] as? String ?: currentTask.phone
+            )
+        }
+
+        conversationContext = conversationContext.copy(activeTask = updatedTask)
+        Log.d(TAG, "Updated active task: $updatedTask")
+    }
+
+    /**
+     * Verifica se c'è un task attivo in corso.
+     */
+    fun hasActiveTask(): Boolean = conversationContext.hasActiveTask()
+
+    /**
+     * Ottiene il task attivo corrente.
+     */
+    fun getActiveTask(): ActiveTask? = conversationContext.activeTask
 
     /**
      * Genera suggerimento basato sullo stato attuale.

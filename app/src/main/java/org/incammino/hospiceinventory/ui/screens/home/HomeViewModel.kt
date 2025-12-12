@@ -283,6 +283,27 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(isOnline = isOnline) }
     }
 
+    /**
+     * Rilascia le risorse quando il ViewModel viene distrutto.
+     *
+     * NOTA IMPORTANTE: voiceAssistant.release() chiama geminiService.resetContext()
+     * che cancella il ConversationContext (incluso ActiveTask per flussi multi-step).
+     *
+     * Questo significa che il contesto conversazionale viene PERSO quando:
+     * - L'utente naviga via dalla HomeScreen
+     * - L'Activity viene distrutta (rotazione, back, system kill)
+     * - Cambio configurazione non gestito
+     *
+     * Il contesto RIMANE PERSISTENTE durante:
+     * - Interazioni vocali consecutive sulla stessa schermata
+     * - Flussi multi-step (creazione prodotto, registrazione manutenzione)
+     *
+     * Se in futuro serve persistenza oltre la vita del ViewModel,
+     * considerare: SavedStateHandle + serializzazione di ActiveTask.
+     *
+     * @see GeminiService.resetContext
+     * @see ConversationContext.activeTask
+     */
     override fun onCleared() {
         super.onCleared()
         voiceAssistant.release()
