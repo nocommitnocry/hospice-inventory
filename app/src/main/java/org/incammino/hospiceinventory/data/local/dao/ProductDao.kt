@@ -37,10 +37,10 @@ interface ProductDao {
     // ═══════════════════════════════════════════════════════════════════════
     
     @Query("""
-        SELECT * FROM products 
-        WHERE isActive = 1 
+        SELECT * FROM products
+        WHERE isActive = 1
         AND (
-            name LIKE '%' || :query || '%' 
+            name LIKE '%' || :query || '%'
             OR description LIKE '%' || :query || '%'
             OR category LIKE '%' || :query || '%'
             OR barcode LIKE '%' || :query || '%'
@@ -49,7 +49,26 @@ interface ProductDao {
         ORDER BY name ASC
     """)
     fun search(query: String): Flow<List<ProductEntity>>
-    
+
+    /**
+     * Ricerca sincrona (one-shot) per query vocali.
+     * Stessa query di search() ma restituisce direttamente una lista.
+     */
+    @Query("""
+        SELECT * FROM products
+        WHERE isActive = 1
+        AND (
+            name LIKE '%' || :query || '%'
+            OR description LIKE '%' || :query || '%'
+            OR category LIKE '%' || :query || '%'
+            OR barcode LIKE '%' || :query || '%'
+            OR location LIKE '%' || :query || '%'
+        )
+        ORDER BY name ASC
+        LIMIT 10
+    """)
+    suspend fun searchSync(query: String): List<ProductEntity>
+
     @Query("""
         SELECT * FROM products 
         WHERE isActive = 1 

@@ -12,6 +12,7 @@ import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -106,10 +107,25 @@ class VoiceService @Inject constructor(
     companion object {
         private const val TAG = "VoiceService"
         private const val LANGUAGE = "it-IT"
+
+        // P2 FIX: Costanti per gestione timeout intelligente
+        /** Delay in ms dopo fine speech prima di processare (default 2.5s) */
+        private const val SILENCE_DELAY_MS = 2500L
+
+        /** Parole chiave che terminano immediatamente l'ascolto */
+        private val TRIGGER_WORDS = listOf(
+            "fatto", "invia", "ok", "procedi", "basta", "stop", "fine"
+        )
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var isInitialized = false
+
+    // P2 FIX: Variabili per gestione timeout intelligente
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var silenceJob: Job? = null
+    private var accumulatedText = StringBuilder()
+    private var lastConfidence = 0f
 
     private val _state = MutableStateFlow<VoiceState>(VoiceState.Idle)
     val state: StateFlow<VoiceState> = _state.asStateFlow()
@@ -177,6 +193,12 @@ class VoiceService @Inject constructor(
         }
 
         try {
+            // P2 FIX: Reset delle variabili di accumulo
+            silenceJob?.cancel()
+            silenceJob = null
+            accumulatedText.clear()
+            lastConfidence = 0f
+
             val intent = createRecognizerIntent()
             speechRecognizer?.startListening(intent)
             _state.value = VoiceState.Listening
@@ -220,9 +242,15 @@ class VoiceService @Inject constructor(
      */
     fun release() {
         try {
+            // P2 FIX: Cancella il job di silenzio e lo scope
+            silenceJob?.cancel()
+            silenceJob = null
+            scope.cancel()
+
             speechRecognizer?.destroy()
             speechRecognizer = null
             isInitialized = false
+            accumulatedText.clear()
             _state.value = VoiceState.Idle
             Log.i(TAG, "VoiceService released")
         } catch (e: Exception) {
@@ -276,6 +304,7 @@ class VoiceService @Inject constructor(
 
     /**
      * Crea il listener per gli eventi di riconoscimento.
+     * P2 FIX: Implementa silence delay e trigger words per gestire frasi lunghe.
      */
     private fun createRecognitionListener(): RecognitionListener {
         return object : RecognitionListener {
@@ -287,6 +316,9 @@ class VoiceService @Inject constructor(
 
             override fun onBeginningOfSpeech() {
                 Log.d(TAG, "Beginning of speech detected")
+                // P2 FIX: Cancella il timer di silenzio - l'utente sta parlando
+                silenceJob?.cancel()
+                silenceJob = null
             }
 
             override fun onRmsChanged(rmsdB: Float) {
@@ -299,13 +331,27 @@ class VoiceService @Inject constructor(
             }
 
             override fun onEndOfSpeech() {
-                Log.d(TAG, "End of speech detected")
+                Log.d(TAG, "End of speech detected - starting silence timer")
                 _state.value = VoiceState.Processing
+
+                // P2 FIX: Invece di processare subito, avvia timer di attesa
+                // Questo permette all'utente di riprendere a parlare dopo una pausa
+                silenceJob?.cancel()
+                silenceJob = scope.launch {
+                    delay(SILENCE_DELAY_MS)
+                    // Se arriviamo qui, l'utente non ha ripreso a parlare
+                    Log.d(TAG, "Silence timeout reached - finalizing result")
+                    finalizeResult()
+                }
             }
 
             override fun onError(error: Int) {
                 val errorMessage = VoiceErrorCodes.getErrorMessage(error)
                 Log.w(TAG, "Recognition error: $error - $errorMessage")
+
+                // P2 FIX: Cancella il timer
+                silenceJob?.cancel()
+                silenceJob = null
 
                 // Alcuni errori non sono critici
                 val isCritical = error !in listOf(
@@ -328,8 +374,13 @@ class VoiceService @Inject constructor(
 
                 if (matches.isNullOrEmpty()) {
                     Log.w(TAG, "No results")
-                    _state.value = VoiceState.Error("Nessun risultato", SpeechRecognizer.ERROR_NO_MATCH)
-                    onError?.invoke("Nessun risultato", SpeechRecognizer.ERROR_NO_MATCH)
+                    // Se abbiamo testo accumulato, usalo comunque
+                    if (accumulatedText.isNotEmpty()) {
+                        finalizeResult()
+                    } else {
+                        _state.value = VoiceState.Error("Nessun risultato", SpeechRecognizer.ERROR_NO_MATCH)
+                        onError?.invoke("Nessun risultato", SpeechRecognizer.ERROR_NO_MATCH)
+                    }
                     return
                 }
 
@@ -338,11 +389,31 @@ class VoiceService @Inject constructor(
 
                 Log.i(TAG, "Result: '$bestMatch' (confidence: $confidence)")
 
-                _state.value = VoiceState.Result(bestMatch, confidence)
-                onResult?.invoke(bestMatch)
+                // P2 FIX: Accumula il testo invece di processarlo subito
+                accumulatedText.append(" ").append(bestMatch)
+                lastConfidence = confidence
 
-                // Reset a Idle dopo aver processato il risultato
-                _state.value = VoiceState.Idle
+                // P2 FIX: Controlla se contiene una trigger word
+                val normalizedText = bestMatch.lowercase().trim()
+                val hasTriggerWord = TRIGGER_WORDS.any { trigger ->
+                    normalizedText.endsWith(trigger) ||
+                    normalizedText.endsWith("$trigger.") ||
+                    normalizedText == trigger
+                }
+
+                if (hasTriggerWord) {
+                    Log.d(TAG, "P2: Trigger word detected - processing immediately")
+                    silenceJob?.cancel()
+                    silenceJob = null
+
+                    // Rimuovi la trigger word dal testo finale
+                    val cleanedText = removeTriggerWord(accumulatedText.toString().trim())
+                    emitFinalResult(cleanedText, confidence)
+                } else {
+                    // Mostra risultato parziale mentre aspettiamo
+                    _state.value = VoiceState.PartialResult(accumulatedText.toString().trim())
+                    onPartialResult?.invoke(accumulatedText.toString().trim())
+                }
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
@@ -352,8 +423,15 @@ class VoiceService @Inject constructor(
                     val partialText = matches[0]
                     Log.d(TAG, "Partial: '$partialText'")
 
-                    _state.value = VoiceState.PartialResult(partialText)
-                    onPartialResult?.invoke(partialText)
+                    // P2 FIX: Mostra combinazione di accumulato + parziale
+                    val displayText = if (accumulatedText.isNotEmpty()) {
+                        "${accumulatedText.toString().trim()} $partialText"
+                    } else {
+                        partialText
+                    }
+
+                    _state.value = VoiceState.PartialResult(displayText)
+                    onPartialResult?.invoke(displayText)
                 }
             }
 
@@ -361,6 +439,52 @@ class VoiceService @Inject constructor(
                 Log.d(TAG, "Event: $eventType")
             }
         }
+    }
+
+    /**
+     * P2 FIX: Finalizza il risultato dopo il timeout di silenzio.
+     */
+    private fun finalizeResult() {
+        val finalText = accumulatedText.toString().trim()
+        if (finalText.isNotEmpty()) {
+            emitFinalResult(finalText, lastConfidence)
+        } else {
+            _state.value = VoiceState.Idle
+        }
+    }
+
+    /**
+     * P2 FIX: Emette il risultato finale e resetta lo stato.
+     * P4/P5 FIX: Applica post-processing per correggere sigle e spelling fonetico.
+     */
+    private fun emitFinalResult(text: String, confidence: Float) {
+        // P4/P5 FIX: Applica post-processing
+        val processedText = SttPostProcessor.process(text)
+        Log.i(TAG, "Final result: '$text' -> processed: '$processedText' (confidence: $confidence)")
+
+        _state.value = VoiceState.Result(processedText, confidence)
+        onResult?.invoke(processedText)
+
+        // Reset
+        accumulatedText.clear()
+        lastConfidence = 0f
+        _state.value = VoiceState.Idle
+    }
+
+    /**
+     * P2 FIX: Rimuove la trigger word dal testo finale.
+     */
+    private fun removeTriggerWord(text: String): String {
+        val normalized = text.lowercase()
+        for (trigger in TRIGGER_WORDS) {
+            if (normalized.endsWith(trigger)) {
+                return text.dropLast(trigger.length).trim()
+            }
+            if (normalized.endsWith("$trigger.")) {
+                return text.dropLast(trigger.length + 1).trim()
+            }
+        }
+        return text
     }
 }
 

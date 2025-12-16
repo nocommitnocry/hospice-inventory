@@ -6,11 +6,15 @@ import com.google.ai.client.generativeai.type.ResponseStoppedException
 import com.google.ai.client.generativeai.type.SerializationException
 import com.google.ai.client.generativeai.type.content
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import org.incammino.hospiceinventory.data.repository.MaintainerRepository
 import org.incammino.hospiceinventory.data.repository.ProductRepository
 import org.incammino.hospiceinventory.domain.model.MaintenanceType
 import org.incammino.hospiceinventory.domain.model.Product
@@ -355,7 +359,8 @@ object AuditLogger {
 @Singleton
 class GeminiService @Inject constructor(
     private val generativeModel: GenerativeModel,
-    private val productRepository: ProductRepository
+    private val productRepository: ProductRepository,
+    private val maintainerRepository: MaintainerRepository  // P3 FIX: Per contesto manutentori
 ) {
     private var conversationContext = ConversationContext()
     private val rateLimiter = RateLimiter(maxRequests = 15, windowDuration = 1.minutes)
@@ -475,16 +480,26 @@ class GeminiService @Inject constructor(
                     ChatExchange(Role.ASSISTANT, cleanResponse)
                 )
 
+                // P1 FIX: Se c'è un task attivo di MaintenanceRegistration e viene richiesta
+                // una ricerca, eseguila internamente invece di navigare
+                val finalAction = if (action is AssistantAction.SearchProducts &&
+                    conversationContext.activeTask is ActiveTask.MaintenanceRegistration
+                ) {
+                    handleInternalSearchForMaintenance(action.query)
+                } else {
+                    action
+                }
+
                 when {
-                    action == null -> GeminiResult.Success(cleanResponse)
-                    action.riskLevel == ActionRiskLevel.LOW -> {
-                        AuditLogger.logAction(action)
-                        GeminiResult.ActionRequired(action, cleanResponse)
+                    finalAction == null -> GeminiResult.Success(cleanResponse)
+                    finalAction.riskLevel == ActionRiskLevel.LOW -> {
+                        AuditLogger.logAction(finalAction)
+                        GeminiResult.ActionRequired(finalAction, cleanResponse)
                     }
                     else -> {
                         // Azioni a rischio medio/alto richiedono conferma
-                        AuditLogger.logAction(action)
-                        requestConfirmation(action, cleanResponse)
+                        AuditLogger.logAction(finalAction)
+                        requestConfirmation(finalAction, cleanResponse)
                     }
                 }
             } catch (e: ResponseStoppedException) {
@@ -904,34 +919,106 @@ class GeminiService @Inject constructor(
     suspend fun remainingRequests(): Int = rateLimiter.remainingRequests()
 
     /**
-     * Costruisce il prompt di contesto basato sullo stato attuale.
+     * P3 FIX: Costruisce il prompt di contesto basato sullo stato attuale.
+     * Include data corrente, prodotto visualizzato, manutentori e alert scadenze.
      */
     private suspend fun buildContextPrompt(): String {
         val parts = mutableListOf<String>()
 
+        // 1. DATA CORRENTE (Cruciale per evitare allucinazioni temporali)
+        val now = Clock.System.now()
+        val today = now.toLocalDateTime(TimeZone.currentSystemDefault())
+        val dayOfWeekItalian = when (today.dayOfWeek.name) {
+            "MONDAY" -> "Lunedì"
+            "TUESDAY" -> "Martedì"
+            "WEDNESDAY" -> "Mercoledì"
+            "THURSDAY" -> "Giovedì"
+            "FRIDAY" -> "Venerdì"
+            "SATURDAY" -> "Sabato"
+            "SUNDAY" -> "Domenica"
+            else -> today.dayOfWeek.name
+        }
+        parts.add("DATA ODIERNA: ${today.date} ($dayOfWeekItalian)")
+
+        // 2. PRODOTTO ATTUALMENTE VISUALIZZATO
         conversationContext.currentProduct?.let { product ->
             parts.add("""
                 |PRODOTTO ATTUALMENTE VISUALIZZATO:
                 |Nome: ${product.name}
+                |ID: ${product.id}
                 |Categoria: ${product.category}
                 |Ubicazione: ${product.location}
                 |Stato garanzia: ${product.getWarrantyStatusText()}
-                |Stato manutenzione: ${product.getMaintenanceStatusText()}
+                |Manutentore garanzia: ${product.warrantyMaintainerId ?: "N/A"}
+                |Manutentore service: ${product.serviceMaintainerId ?: "N/A"}
             """.trimMargin())
         }
 
+        // 3. MANUTENTORI REGISTRATI (Per inferenza speaker e assegnazione)
+        try {
+            val maintainers = maintainerRepository.getAllActive().first()
+            if (maintainers.isNotEmpty()) {
+                val maintainerList = maintainers.take(20).joinToString("\n") { m ->
+                    "- ${m.name}${m.specialization?.let { " ($it)" } ?: ""}: ${m.email ?: ""} ${m.phone ?: ""}"
+                }
+                val totalCount = if (maintainers.size > 20) " (mostrando 20 di ${maintainers.size})" else ""
+                parts.add("""
+                    |MANUTENTORI REGISTRATI NEL SISTEMA$totalCount:
+                    |$maintainerList
+                    |
+                    |ISTRUZIONE: Se l'utente si presenta come tecnico o dipendente di una di queste aziende
+                    |(es. "Sono Mario di TechMed", "Sono il tecnico di Elettro Impianti"),
+                    |consideralo come l'esecutore dell'intervento (LIKELY_MAINTAINER).
+                    |Non chiedere "chi ha eseguito l'intervento" se l'utente si è già identificato.
+                """.trimMargin())
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Impossibile recuperare lista manutentori per prompt", e)
+        }
+
+        // 4. ALERT SCADENZE
         try {
             val overdueCount = productRepository.countOverdueMaintenance()
             if (overdueCount > 0) {
-                parts.add("ATTENZIONE: Ci sono $overdueCount manutenzioni scadute.")
+                parts.add("⚠️ ATTENZIONE: Ci sono $overdueCount manutenzioni scadute che richiedono intervento.")
             }
         } catch (_: Exception) { }
+
+        // 5. TASK ATTIVO (Se presente)
+        conversationContext.activeTask?.let { task ->
+            parts.add(buildActiveTaskContext(task))
+        }
 
         return if (parts.isEmpty()) {
             "Nessun contesto specifico."
         } else {
             parts.joinToString("\n\n")
         }
+    }
+
+    /**
+     * P3 FIX: Helper per formattare il contesto del task attivo.
+     */
+    private fun buildActiveTaskContext(task: ActiveTask): String = when (task) {
+        is ActiveTask.MaintenanceRegistration -> """
+            |TASK IN CORSO: Registrazione Manutenzione
+            |Prodotto target: ${task.productName} (ID: ${task.productId})
+            |Dati già raccolti:
+            |${task.toCollectedDataString()}
+            |Campi mancanti obbligatori: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+        """.trimMargin()
+        is ActiveTask.ProductCreation -> """
+            |TASK IN CORSO: Creazione Nuovo Prodotto
+            |Dati già raccolti:
+            |${task.toCollectedDataString()}
+            |Campi mancanti obbligatori: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+        """.trimMargin()
+        is ActiveTask.MaintainerCreation -> """
+            |TASK IN CORSO: Registrazione Manutentore
+            |Dati già raccolti:
+            |${task.toCollectedDataString()}
+            |Campi mancanti: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+        """.trimMargin()
     }
 
     /**
@@ -990,6 +1077,73 @@ class GeminiService @Inject constructor(
         }
 
         return cleanResponse to action
+    }
+
+    /**
+     * P1 FIX: Gestisce la ricerca internamente quando c'è un task di MaintenanceRegistration attivo.
+     * Invece di navigare alla schermata di ricerca, cerca nel repository e aggiorna il task.
+     *
+     * @param query La query di ricerca
+     * @return AssistantAction? - null se gestito internamente, ShowProduct se trovato singolo prodotto
+     */
+    private suspend fun handleInternalSearchForMaintenance(query: String): AssistantAction? {
+        val task = conversationContext.activeTask as? ActiveTask.MaintenanceRegistration
+            ?: return AssistantAction.SearchProducts(query) // Fallback se non è MaintenanceRegistration
+
+        Log.d(TAG, "P1: Internal search for maintenance task, query: $query")
+
+        try {
+            val results = productRepository.searchSync(query)
+
+            return when {
+                results.isEmpty() -> {
+                    Log.d(TAG, "P1: No products found for query: $query")
+                    // Nessun prodotto trovato - la risposta di Gemini gestirà questo caso
+                    // Aggiorniamo il contesto per indicare che la ricerca non ha trovato nulla
+                    null
+                }
+
+                results.size == 1 -> {
+                    val product = results.first()
+                    Log.d(TAG, "P1: Single product found: ${product.name} (${product.id})")
+
+                    // Aggiorna il task con il prodotto trovato
+                    conversationContext = conversationContext.copy(
+                        activeTask = task.copy(
+                            productId = product.id,
+                            productName = product.name
+                        ),
+                        currentProduct = product
+                    )
+
+                    // Aggiorna la risposta per confermare il prodotto trovato
+                    conversationContext = conversationContext.addExchange(
+                        ChatExchange(
+                            Role.ASSISTANT,
+                            "Ho trovato ${product.name}. Procedo con la registrazione della manutenzione."
+                        )
+                    )
+
+                    // Restituisci ShowProduct per mostrare i dettagli (opzionale)
+                    AssistantAction.ShowProduct(product.id)
+                }
+
+                else -> {
+                    Log.d(TAG, "P1: Multiple products found (${results.size})")
+                    // Multipli prodotti - aggiorniamo i risultati nel contesto
+                    conversationContext = conversationContext.copy(
+                        lastSearchResults = results
+                    )
+                    // La risposta di Gemini dovrebbe già chiedere disambiguazione
+                    // Non navighiamo - l'utente può specificare meglio vocalmente
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "P1: Error during internal search", e)
+            // In caso di errore, fallback alla ricerca normale
+            return AssistantAction.SearchProducts(query)
+        }
     }
 
     /**

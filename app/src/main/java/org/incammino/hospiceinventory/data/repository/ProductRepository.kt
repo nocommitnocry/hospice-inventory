@@ -74,6 +74,13 @@ class ProductRepository @Inject constructor(
         }
 
     /**
+     * Ricerca sincrona (one-shot) per query vocali.
+     * Usata da GeminiService per ricerche interne durante task multi-step.
+     */
+    suspend fun searchSync(query: String): List<Product> =
+        productDao.searchSync(query).map { it.toDomain() }
+
+    /**
      * Prodotti per categoria.
      */
     fun getByCategory(category: String): Flow<List<Product>> =

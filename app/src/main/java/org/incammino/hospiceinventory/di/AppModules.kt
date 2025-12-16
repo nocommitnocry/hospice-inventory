@@ -86,7 +86,9 @@ object AiModule {
             modelName = "gemini-2.5-flash",  // Stabile, veloce, function calling supportato
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
-                temperature = 0.7f
+                // P3 FIX: Ridotta da 0.7 a 0.4 per maggiore precisione
+                // nell'estrazione dati strutturati, evitando invenzioni
+                temperature = 0.4f
                 topK = 40
                 topP = 0.95f
                 maxOutputTokens = 2048  // Aumentato per risposte complete

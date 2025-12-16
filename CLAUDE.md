@@ -320,7 +320,8 @@ fun calculateNextMaintenanceDue(
 ```
 VoiceAssistantManager (orchestratore)
 ├── VoiceService (STT - Speech-to-Text)
-├── TtsService (Text-to-Speech)
+│   └── SttPostProcessor (correzione sigle + spelling fonetico)
+├── TtsService / GeminiTtsService (Text-to-Speech)
 └── GeminiService (AI + Action Parsing)
     └── ConversationContext (stato conversazionale)
         ├── recentExchanges (ultimi 6 turni)
@@ -389,13 +390,35 @@ L'app inferisce chi sta parlando dai pattern linguistici:
 
 Se manutentore → non chiede "chi ha fatto l'intervento"
 
-### STT Timeout (estesi)
+### STT Timeout e Gestione Intelligente
 
+**Timeout Android (intent extras):**
 ```kotlin
 EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS = 5000L      // 5s
 EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS = 3000L  // 3s
 EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS = 2000L
 ```
+
+**Silence Delay (implementato in VoiceService):**
+- Dopo `onEndOfSpeech()`, attende 2.5s prima di processare
+- Se l'utente riprende a parlare, il timer viene cancellato
+- Permette pause naturali durante dettatura di informazioni lunghe
+
+**Trigger Words** (terminano immediatamente l'ascolto):
+- "fatto", "invia", "ok", "procedi", "basta", "stop", "fine"
+
+### SttPostProcessor (correzione STT)
+
+Post-processore per migliorare il riconoscimento vocale:
+
+**Correzione sigle distorte:**
+- ABC → APC (produttore UPS)
+- UBS/EPS/IPS → UPS
+- Phillips/Fillips → Philips
+
+**Spelling fonetico italiano:**
+- "A come Ancona, P come Padova, C come Como" → "APC"
+- Supporta alfabeto fonetico completo (Ancona, Bari, Como, ...)
 
 ---
 
@@ -603,8 +626,16 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 #### Servizi Vocali
 - [x] **VoiceService** - Speech-to-Text (Google Speech Recognition)
-- [x] **TtsService** - Text-to-Speech
+  - [x] Silence delay (2.5s) per frasi lunghe
+  - [x] Trigger words per terminazione immediata
+  - [x] Accumulo risultati parziali
+- [x] **SttPostProcessor** - Correzione sigle distorte + spelling fonetico italiano
+- [x] **TtsService** - Text-to-Speech Android nativo
+- [x] **GeminiTtsService** - TTS avanzato con architettura per Cloud TTS (fallback Android)
 - [x] **GeminiService** - AI con function calling, rate limiting, audit logging
+  - [x] Contesto arricchito (data corrente, lista manutentori)
+  - [x] Ricerca interna durante task MaintenanceRegistration
+  - [x] Temperature ridotta a 0.4 per maggiore precisione
 - [x] **ConversationContext** - Contesto conversazionale multi-turno
 - [x] **ActiveTask** - Task multi-step (ProductCreation, MaintenanceRegistration, MaintainerCreation)
 - [x] **SpeakerInference** - Inferenza manutentore vs operatore
@@ -637,10 +668,41 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 1. **Mai committare** `local.properties` e `google-services.json`
 2. **Gemini API**: Usare `gemini-2.5-flash`, NON gemini-pro (costi 16x)
+   - Temperature: 0.4 (ridotta per maggiore precisione nell'estrazione dati)
 3. **Room migrations**: Per ora `fallbackToDestructiveMigration()` ok, rimuovere in produzione
 4. **Kotlin**: Target JVM 17
 5. **Min SDK**: 26 (Android 8.0) per kotlinx-datetime
 6. **Nessun dato sanitario**: L'app gestisce solo inventario, NO dati pazienti
+
+---
+
+## 🐛 Bugfix Recenti (Dicembre 2024)
+
+### Sessione 16/12/2024 - Test su Tablet
+
+**P1 - Flusso MaintenanceRegistration** (CRITICO - RISOLTO)
+- Problema: Navigazione a SearchScreen interrompeva il task multi-step
+- Fix: Ricerca interna in `GeminiService.handleInternalSearchForMaintenance()`
+- File: `GeminiService.kt`, `ProductDao.kt` (aggiunto `searchSync`)
+
+**P2 - Timeout STT** (CRITICO - RISOLTO)
+- Problema: Device ignorava timeout estesi, troncava frasi lunghe
+- Fix: Silence delay 2.5s + trigger words in `VoiceService`
+- File: `VoiceService.kt`
+
+**P3 - Contesto Gemini incompleto** (ALTO - RISOLTO)
+- Problema: Gemini non conosceva data corrente e manutentori
+- Fix: `buildContextPrompt()` arricchito con data, manutentori, task attivo
+- File: `GeminiService.kt`
+
+**P4/P5 - Sigle STT distorte** (ALTO - RISOLTO)
+- Problema: "APC" riconosciuto come "ABC", spelling fonetico non interpretato
+- Fix: Nuovo `SttPostProcessor` con correzioni e alfabeto fonetico
+- File: `SttPostProcessor.kt` (nuovo)
+
+**P6 - TTS qualità** (MEDIO - ARCHITETTURA PRONTA)
+- Fix: Creato `GeminiTtsService` con fallback Android, pronto per Cloud TTS
+- File: `GeminiTtsService.kt` (nuovo)
 
 ---
 

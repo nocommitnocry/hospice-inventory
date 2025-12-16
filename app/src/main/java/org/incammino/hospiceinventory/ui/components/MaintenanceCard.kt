@@ -274,7 +274,7 @@ private fun MaintenanceTypeBadge(type: MaintenanceType) {
         MaintenanceType.DISMISSIONE -> Icons.Default.Delete
         MaintenanceType.RIPARAZIONE -> Icons.Default.Build
         MaintenanceType.SOSTITUZIONE -> Icons.Default.SwapHoriz
-        MaintenanceType.COLLAUDO -> Icons.AutoMirrored.Filled.FactCheck
+        MaintenanceType.COLLAUDO -> Icons.Default.Verified
     }
 
     Surface(
