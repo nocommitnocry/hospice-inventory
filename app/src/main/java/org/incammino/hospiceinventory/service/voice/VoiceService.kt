@@ -509,16 +509,21 @@ sealed class TtsState {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * BUGFIX: Rimuove la formattazione markdown dal testo per il TTS.
- * Evita che il TTS legga "asterisco asterisco parola asterisco asterisco".
+ * BUGFIX: Rimuove la formattazione markdown e i tag interni dal testo per il TTS.
+ * Evita che il TTS legga "asterisco asterisco parola asterisco asterisco" o
+ * "TASK UPDATE type RIPARAZIONE".
  */
 object TtsTextCleaner {
 
     /**
-     * Pulisce il testo rimuovendo markdown per una lettura naturale.
+     * Pulisce il testo rimuovendo markdown e tag interni per una lettura naturale.
      */
     fun clean(text: String): String {
         return text
+            // TAG INTERNI (rimuovere PRIMA di tutto il resto)
+            .replace(Regex("""\[TASK_UPDATE:[^\]]*\]"""), "")
+            .replace(Regex("""\[ACTION:[^\]]*\]"""), "")
+
             // Bold e italic
             .replace(Regex("""\*\*\*(.+?)\*\*\*"""), "$1")  // ***bold italic***
             .replace(Regex("""\*\*(.+?)\*\*"""), "$1")       // **bold**
