@@ -504,6 +504,53 @@ sealed class TtsState {
     data object Unavailable : TtsState()
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// TTS TEXT CLEANER - Rimuove markdown per TTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * BUGFIX: Rimuove la formattazione markdown dal testo per il TTS.
+ * Evita che il TTS legga "asterisco asterisco parola asterisco asterisco".
+ */
+object TtsTextCleaner {
+
+    /**
+     * Pulisce il testo rimuovendo markdown per una lettura naturale.
+     */
+    fun clean(text: String): String {
+        return text
+            // Bold e italic
+            .replace(Regex("""\*\*\*(.+?)\*\*\*"""), "$1")  // ***bold italic***
+            .replace(Regex("""\*\*(.+?)\*\*"""), "$1")       // **bold**
+            .replace(Regex("""\*(.+?)\*"""), "$1")           // *italic*
+            .replace(Regex("""__(.+?)__"""), "$1")           // __bold__
+            .replace(Regex("""_(.+?)_"""), "$1")             // _italic_
+
+            // Headers
+            .replace(Regex("""^#{1,6}\s*""", RegexOption.MULTILINE), "")
+
+            // Liste
+            .replace(Regex("""^\s*[-*+]\s+""", RegexOption.MULTILINE), "")
+            .replace(Regex("""^\s*\d+\.\s+""", RegexOption.MULTILINE), "")
+
+            // Links [text](url) → text
+            .replace(Regex("""\[([^\]]+)\]\([^)]+\)"""), "$1")
+
+            // Code blocks e inline code
+            .replace(Regex("""```[^`]*```""", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("""`([^`]+)`"""), "$1")
+
+            // Caratteri residui
+            .replace("*", "")
+            .replace("_", " ")
+            .replace("#", "")
+
+            // Cleanup spazi multipli e newline
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+}
+
 /**
  * Servizio per la sintesi vocale (Text-to-Speech).
  * Utilizza Android TTS nativo - gratuito e funziona offline.
@@ -940,10 +987,12 @@ class VoiceAssistant @Inject constructor(
 
     /**
      * Parla la risposta usando TTS se abilitato.
+     * BUGFIX: Applica TtsTextCleaner per rimuovere markdown dal testo.
      */
     private fun speakResponse(text: String) {
         if (_isTtsEnabled.value && ttsService.isAvailable.value) {
-            ttsService.speak(text)
+            val cleanText = TtsTextCleaner.clean(text)
+            ttsService.speak(cleanText)
         } else {
             // Se TTS disabilitato, torna a Idle dopo un delay
             resetToIdleAfterDelay()

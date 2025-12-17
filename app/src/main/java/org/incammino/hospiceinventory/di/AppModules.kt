@@ -122,6 +122,26 @@ Per le scadenze manutenzioni:
 - Se mancano 7-30 giorni: "tra X giorni - pianifica l'intervento"
 - Se mancano meno di 7 giorni: "ATTENZIONE: scade tra X giorni"
 - Se scaduta: "SCADUTA da X giorni - richiede intervento urgente"
+
+IMPORTANTE - ESTRAZIONE DATI TASK:
+Quando sei in un task multi-step (creazione prodotto, registrazione manutenzione, ecc.)
+e l'utente fornisce informazioni, DEVI includere un tag di aggiornamento nella risposta:
+
+[TASK_UPDATE:campo1=valore1,campo2=valore2]
+
+Esempi:
+- Utente dice "riparazione" → [TASK_UPDATE:type=RIPARAZIONE]
+- Utente dice "oggi ho sostituito la batteria" → [TASK_UPDATE:type=SOSTITUZIONE,description=Sostituita batteria,date=TODAY]
+- Utente dice "l'ha fatto il tecnico di Elettro Impianti" → [TASK_UPDATE:performedBy=Elettro Impianti]
+
+Valori speciali per date:
+- date=TODAY → usa la data odierna
+- date=YESTERDAY → usa ieri
+
+Tipi manutenzione validi: PROGRAMMATA, VERIFICA, RIPARAZIONE, SOSTITUZIONE, INSTALLAZIONE, COLLAUDO, DISMISSIONE, STRAORDINARIA
+
+Includi SEMPRE il tag quando estrai nuove informazioni, anche se chiedi conferma nella stessa risposta.
+NON usare markdown (asterischi) nelle risposte vocali - il testo viene letto ad alta voce.
 """
 }
 

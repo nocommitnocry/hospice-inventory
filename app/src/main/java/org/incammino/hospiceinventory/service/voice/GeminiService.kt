@@ -11,8 +11,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.incammino.hospiceinventory.data.repository.MaintainerRepository
 import org.incammino.hospiceinventory.data.repository.ProductRepository
@@ -1023,16 +1026,31 @@ class GeminiService @Inject constructor(
 
     /**
      * Estrae azioni dalla risposta di Gemini.
+     * BUGFIX: Ora parsa anche [TASK_UPDATE:...] per aggiornare i task multi-step.
      */
     private fun parseResponse(response: String): Pair<String, AssistantAction?> {
-        val actionRegex = """\[ACTION:([A-Z_]+):?([^\]]*)\]""".toRegex()
-        val match = actionRegex.find(response)
+        var cleanResponse = response
 
-        if (match == null) {
-            return response to null
+        // 1. BUGFIX: Parsing TASK_UPDATE per aggiornare il task attivo
+        val taskUpdateRegex = """\[TASK_UPDATE:([^\]]+)\]""".toRegex()
+        val taskUpdateMatch = taskUpdateRegex.find(response)
+
+        if (taskUpdateMatch != null && conversationContext.hasActiveTask()) {
+            cleanResponse = cleanResponse.replace(taskUpdateRegex, "").trim()
+            val updates = parseTaskUpdateParams(taskUpdateMatch.groupValues[1])
+            applyTaskUpdates(updates)
+            Log.d(TAG, "TASK_UPDATE parsed and applied: $updates")
         }
 
-        val cleanResponse = response.replace(actionRegex, "").trim()
+        // 2. Parsing ACTION esistente
+        val actionRegex = """\[ACTION:([A-Z_]+):?([^\]]*)\]""".toRegex()
+        val match = actionRegex.find(cleanResponse)
+
+        if (match == null) {
+            return cleanResponse to null
+        }
+
+        cleanResponse = cleanResponse.replace(actionRegex, "").trim()
         val actionType = match.groupValues[1]
         val actionParams = match.groupValues[2]
 
@@ -1235,6 +1253,100 @@ class GeminiService @Inject constructor(
                 GeminiResult.Success(response.text ?: "Come posso aiutarti?")
             } catch (e: Exception) {
                 GeminiResult.Success("Come posso aiutarti?")
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // BUGFIX: TASK_UPDATE PARSING HELPERS
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Parsa i parametri del tag TASK_UPDATE.
+     * Formato: campo1=valore1,campo2=valore2
+     */
+    private fun parseTaskUpdateParams(params: String): Map<String, String> {
+        return params.split(",").mapNotNull { param ->
+            val parts = param.split("=", limit = 2)
+            if (parts.size == 2) {
+                parts[0].trim().lowercase() to parts[1].trim()
+            } else null
+        }.toMap()
+    }
+
+    /**
+     * Applica gli aggiornamenti al task attivo.
+     */
+    private fun applyTaskUpdates(updates: Map<String, String>) {
+        val task = conversationContext.activeTask ?: return
+
+        when (task) {
+            is ActiveTask.MaintenanceRegistration -> {
+                val newTask = task.copy(
+                    type = updates["type"]?.let { parseMaintenanceTypeFromUpdate(it) } ?: task.type,
+                    description = updates["description"] ?: task.description,
+                    performedBy = updates["performedby"] ?: task.performedBy,
+                    cost = updates["cost"]?.toDoubleOrNull() ?: task.cost,
+                    date = updates["date"]?.let { parseTaskDate(it) } ?: task.date
+                )
+                conversationContext = conversationContext.copy(activeTask = newTask)
+                Log.d(TAG, "MaintenanceRegistration task updated: $newTask")
+            }
+
+            is ActiveTask.ProductCreation -> {
+                val newTask = task.copy(
+                    name = updates["name"] ?: task.name,
+                    category = updates["category"] ?: task.category,
+                    brand = updates["brand"] ?: task.brand,
+                    model = updates["model"] ?: task.model,
+                    location = updates["location"] ?: task.location,
+                    barcode = updates["barcode"] ?: task.barcode,
+                    notes = updates["notes"] ?: task.notes
+                )
+                conversationContext = conversationContext.copy(activeTask = newTask)
+                Log.d(TAG, "ProductCreation task updated: $newTask")
+            }
+
+            is ActiveTask.MaintainerCreation -> {
+                val newTask = task.copy(
+                    name = updates["name"] ?: task.name,
+                    company = updates["company"] ?: task.company,
+                    email = updates["email"] ?: task.email,
+                    phone = updates["phone"] ?: task.phone
+                )
+                conversationContext = conversationContext.copy(activeTask = newTask)
+                Log.d(TAG, "MaintainerCreation task updated: $newTask")
+            }
+        }
+    }
+
+    /**
+     * Parsa il tipo di manutenzione dal valore TASK_UPDATE.
+     */
+    private fun parseMaintenanceTypeFromUpdate(text: String): MaintenanceType? {
+        val normalized = text.uppercase().trim()
+        return MaintenanceType.entries.find {
+            it.name == normalized ||
+            it.displayName.equals(text, ignoreCase = true) ||
+            it.synonyms.any { syn -> syn.equals(text, ignoreCase = true) }
+        }
+    }
+
+    /**
+     * Parsa la data dal valore TASK_UPDATE.
+     * Supporta: TODAY, YESTERDAY, OGGI, IERI, o date ISO (YYYY-MM-DD).
+     */
+    private fun parseTaskDate(text: String): LocalDate? {
+        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+
+        return when (text.uppercase()) {
+            "TODAY", "OGGI" -> today
+            "YESTERDAY", "IERI" -> today.minus(DatePeriod(days = 1))
+            else -> try {
+                LocalDate.parse(text)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not parse date: $text")
+                null
             }
         }
     }
