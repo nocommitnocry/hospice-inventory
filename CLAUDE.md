@@ -642,6 +642,10 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - [x] **UserIntentDetector** - Rilevamento "basta così", "annulla"
 - [x] **EnumMatcher** - Matching fuzzy per categorie/tipi
 
+#### Hardware Integration
+- [x] **BarcodeAnalyzer** - Analyzer CameraX con ML Kit per scansione codici
+- [x] **ScannerScreen** - Schermata scanner con preview camera e overlay mirino
+
 #### Dati Demo
 - [x] **SampleDataPopulator** - Dati di test per sviluppo
 
@@ -651,7 +655,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - [ ] **Excel Import** - Parser per dati iniziali (Inventario.xlsx)
 
 #### Hardware Integration
-- [ ] **BarcodeScanner** - ML Kit Barcode Scanning
+- [x] **BarcodeScanner** - ML Kit Barcode Scanning (17/12/2024)
 - [ ] **CameraCapture** - Foto prodotti con CameraX
 
 #### Comunicazione
@@ -703,6 +707,25 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 **P6 - TTS qualità** (MEDIO - ARCHITETTURA PRONTA)
 - Fix: Creato `GeminiTtsService` con fallback Android, pronto per Cloud TTS
 - File: `GeminiTtsService.kt` (nuovo)
+
+### Sessione 17/12/2024 - Bugfix Loop ActiveTask
+
+**P7 - Loop conferma ActiveTask** (CRITICO - RISOLTO)
+- Problema: Dopo conferma utente ("sì"), il task ricominciava chiedendo tipo/descrizione
+- Causa: Gemini estraeva i dati ma non li salvava nel task (nessun formato strutturato)
+- Fix:
+  - Aggiunto tag `[TASK_UPDATE:campo=valore]` al system prompt
+  - Parsing del tag in `parseResponse()` con `applyTaskUpdates()`
+  - Helper: `parseTaskUpdateParams()`, `parseMaintenanceTypeFromUpdate()`, `parseTaskDate()`
+- File: `AppModules.kt`, `GeminiService.kt`
+
+**P8 - TTS legge markdown e tag interni** (ALTO - RISOLTO)
+- Problema: TTS pronunciava "asterisco asterisco" e "TASK UPDATE type RIPARAZIONE"
+- Fix: Creato `TtsTextCleaner` object che rimuove:
+  - Tag interni: `[TASK_UPDATE:...]`, `[ACTION:...]`
+  - Markdown: bold, italic, headers, liste, links, code blocks
+- Applicato in `VoiceAssistant.speakResponse()` prima di passare al TTS
+- File: `VoiceService.kt`
 
 ---
 

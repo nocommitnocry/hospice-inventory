@@ -14,6 +14,7 @@ import org.incammino.hospiceinventory.ui.screens.product.ProductEditScreen
 import org.incammino.hospiceinventory.ui.screens.maintenance.MaintenanceListScreen
 import org.incammino.hospiceinventory.ui.screens.maintenance.MaintenanceEditScreen
 import org.incammino.hospiceinventory.ui.screens.settings.SettingsScreen
+import org.incammino.hospiceinventory.ui.screens.scanner.ScannerScreen
 
 /**
  * Route di navigazione dell'app.
@@ -35,7 +36,9 @@ sealed class Screen(val route: String) {
             "maintenance/edit/${maintenanceId ?: "new"}?productId=${productId ?: ""}"
     }
     data object Settings : Screen("settings")
-    data object Scanner : Screen("scanner")
+    data object Scanner : Screen("scanner?reason={reason}") {
+        fun createRoute(reason: String? = null) = "scanner?reason=${reason ?: ""}"
+    }
 }
 
 /**
@@ -179,9 +182,26 @@ fun HospiceNavHost(
             )
         }
         
-        // Scanner (TODO: implementare)
-        composable(Screen.Scanner.route) {
-            // ScannerScreen()
+        // Scanner
+        composable(
+            route = Screen.Scanner.route,
+            arguments = listOf(
+                navArgument("reason") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { backStackEntry ->
+            val reason = backStackEntry.arguments?.getString("reason")?.takeIf { it.isNotEmpty() }
+            ScannerScreen(
+                reason = reason,
+                onNavigateBack = { navController.popBackStack() },
+                onBarcodeScanned = { barcode ->
+                    // Torna indietro e naviga alla ricerca con il barcode
+                    navController.popBackStack()
+                    navController.navigate(Screen.Search.createRoute(barcode))
+                }
+            )
         }
     }
 }
