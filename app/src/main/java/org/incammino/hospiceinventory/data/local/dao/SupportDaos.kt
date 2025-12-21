@@ -37,6 +37,12 @@ interface MaintainerDao {
     
     @Query("SELECT * FROM maintainers WHERE isActive = 1 AND isSupplier = 1 ORDER BY name ASC")
     fun getSuppliers(): Flow<List<MaintainerEntity>>
+
+    @Query("SELECT COUNT(*) FROM maintainers WHERE isActive = 1")
+    suspend fun countActive(): Int
+
+    @Query("SELECT COUNT(*) FROM maintainers")
+    suspend fun countAll(): Int
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(maintainer: MaintainerEntity)
@@ -52,6 +58,12 @@ interface MaintainerDao {
     
     @Delete
     suspend fun delete(maintainer: MaintainerEntity)
+
+    @Query("DELETE FROM maintainers")
+    suspend fun deleteAll()
+
+    @Query("DELETE FROM maintainers WHERE id LIKE :pattern")
+    suspend fun deleteByIdPattern(pattern: String)
 }
 
 /**
@@ -116,6 +128,12 @@ interface MaintenanceDao {
     
     @Query("DELETE FROM maintenances WHERE productId = :productId")
     suspend fun deleteByProduct(productId: String)
+
+    @Query("DELETE FROM maintenances")
+    suspend fun deleteAll()
+
+    @Query("DELETE FROM maintenances WHERE productId LIKE :pattern")
+    suspend fun deleteByProductIdPattern(pattern: String)
 }
 
 /**
@@ -123,30 +141,54 @@ interface MaintenanceDao {
  */
 @Dao
 interface LocationDao {
-    
+
     @Query("SELECT * FROM locations WHERE isActive = 1 ORDER BY name ASC")
     fun getAllActive(): Flow<List<LocationEntity>>
-    
+
+    @Query("SELECT * FROM locations ORDER BY name ASC")
+    fun getAll(): Flow<List<LocationEntity>>
+
     @Query("SELECT * FROM locations WHERE id = :id")
     suspend fun getById(id: String): LocationEntity?
-    
+
+    @Query("SELECT * FROM locations WHERE id = :id")
+    fun getByIdFlow(id: String): Flow<LocationEntity?>
+
     @Query("SELECT * FROM locations WHERE parentId = :parentId ORDER BY name ASC")
     fun getChildren(parentId: String): Flow<List<LocationEntity>>
-    
+
     @Query("SELECT * FROM locations WHERE parentId IS NULL AND isActive = 1 ORDER BY name ASC")
     fun getRootLocations(): Flow<List<LocationEntity>>
-    
+
+    @Query("SELECT COUNT(*) FROM locations WHERE isActive = 1")
+    suspend fun countActive(): Int
+
+    @Query("SELECT COUNT(*) FROM locations")
+    suspend fun countAll(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(location: LocationEntity)
-    
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(locations: List<LocationEntity>)
-    
+
     @Update
     suspend fun update(location: LocationEntity)
-    
+
+    @Query("UPDATE locations SET isActive = 0, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun softDelete(id: String, updatedAt: Instant)
+
     @Delete
     suspend fun delete(location: LocationEntity)
+
+    @Query("DELETE FROM locations WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM locations")
+    suspend fun deleteAll()
+
+    @Query("DELETE FROM locations WHERE id LIKE :pattern")
+    suspend fun deleteByIdPattern(pattern: String)
 }
 
 /**

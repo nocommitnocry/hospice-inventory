@@ -221,12 +221,13 @@ data class Assignee(
  * Domain model per Location
  */
 data class Location(
-    val id: String,
+    val id: String = "",
     val name: String,
-    val parentId: String?,
-    val address: String?,
-    val coordinates: String?,
-    val isActive: Boolean
+    val parentId: String? = null,
+    val address: String? = null,
+    val coordinates: String? = null,
+    val notes: String? = null,
+    val isActive: Boolean = true
 )
 
 /**

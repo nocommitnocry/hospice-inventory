@@ -90,4 +90,63 @@
     <string name="confirm_delete_message">Vuoi eliminare questo prodotto?</string>
     <string name="confirm_email_title">Conferma invio email</string>
     <string name="confirm_email_message">Vuoi inviare la richiesta di intervento a %s?</string>
+
+    <!-- Sezioni Form -->
+    <string name="section_main_data">Dati principali</string>
+    <string name="section_address">Indirizzo</string>
+    <string name="section_fiscal">Dati fiscali</string>
+    <string name="section_contact">Referente</string>
+    <string name="section_options">Opzioni</string>
+    <string name="section_intervention">Intervento</string>
+    <string name="section_executor">Esecutore</string>
+    <string name="section_costs">Costi</string>
+
+    <!-- Campi comuni -->
+    <string name="email">Email</string>
+    <string name="phone">Telefono</string>
+    <string name="address">Indirizzo</string>
+    <string name="city">Città</string>
+    <string name="postal_code">CAP</string>
+    <string name="province">Provincia</string>
+    <string name="notes">Note</string>
+
+    <!-- Manutentori -->
+    <string name="maintainer_list">Anagrafica Manutentori</string>
+    <string name="maintainer_new">Nuovo manutentore</string>
+    <string name="maintainer_edit">Modifica manutentore</string>
+    <string name="maintainer_name">Ragione sociale</string>
+    <string name="maintainer_specialization">Specializzazione</string>
+    <string name="maintainer_vat">Partita IVA</string>
+    <string name="maintainer_contact_person">Persona di riferimento</string>
+    <string name="maintainer_is_supplier">È anche fornitore</string>
+    <string name="maintainer_is_supplier_hint">Può vendere prodotti oltre che manutenerli</string>
+
+    <!-- Ubicazioni -->
+    <string name="location_list">Anagrafica Ubicazioni</string>
+    <string name="location_new">Nuova ubicazione</string>
+    <string name="location_edit">Modifica ubicazione</string>
+    <string name="location_name">Nome ubicazione</string>
+    <string name="location_parent">Sede principale</string>
+    <string name="location_no_parent">Nessuna (sede principale)</string>
+    <string name="location_address">Indirizzo sede</string>
+
+    <!-- Manutenzioni aggiuntive -->
+    <string name="maintenance_select_product">Prodotto</string>
+    <string name="maintenance_date">Data intervento</string>
+    <string name="maintenance_select_maintainer">Manutentore</string>
+    <string name="maintenance_warranty_work">Intervento in garanzia</string>
+    <string name="maintenance_cost">Costo</string>
+    <string name="maintenance_invoice">N° Fattura</string>
+
+    <!-- Gestione Dati -->
+    <string name="data_management">Gestione Dati</string>
+    <string name="data_stats">Statistiche Database</string>
+    <string name="data_cleanup">Pulizia Dati</string>
+    <string name="data_cleanup_sample">Elimina solo dati di esempio</string>
+    <string name="data_cleanup_sample_hint">Rimuove i dati demo (ID: prod-*, maint-*, loc-*) mantenendo i dati reali importati</string>
+    <string name="data_cleanup_products">Elimina tutti i prodotti</string>
+    <string name="data_cleanup_maintainers">Elimina tutti i manutentori</string>
+    <string name="data_cleanup_all">Reset database completo</string>
+    <string name="data_cleanup_confirm_sample">Verranno eliminati tutti i dati di esempio. I dati importati resteranno intatti. Continuare?</string>
+    <string name="data_cleanup_confirm_all">ATTENZIONE: Tutti i dati verranno eliminati. Questa operazione è irreversibile. Continuare?</string>
 </resources>

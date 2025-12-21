@@ -3,111 +3,121 @@ package org.incammino.hospiceinventory.data.repository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
-import org.incammino.hospiceinventory.data.local.dao.MaintainerDao
-import org.incammino.hospiceinventory.data.local.entity.MaintainerEntity
-import org.incammino.hospiceinventory.domain.model.Maintainer
+import org.incammino.hospiceinventory.data.local.dao.LocationDao
+import org.incammino.hospiceinventory.data.local.entity.LocationEntity
+import org.incammino.hospiceinventory.domain.model.Location
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Repository per la gestione dei Manutentori.
- * Gestisce sia i fornitori (garanzia) che i riparatori (service).
+ * Repository per la gestione delle Ubicazioni.
+ * Gestisce la gerarchia di sedi (Edificio > Piano > Stanza).
  */
 @Singleton
-class MaintainerRepository @Inject constructor(
-    private val maintainerDao: MaintainerDao
+class LocationRepository @Inject constructor(
+    private val locationDao: LocationDao
 ) {
     // ═══════════════════════════════════════════════════════════════════════════
     // QUERY
     // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Tutti i manutentori attivi.
+     * Tutte le ubicazioni attive.
      */
-    fun getAllActive(): Flow<List<Maintainer>> =
-        maintainerDao.getAllActive().map { entities ->
+    fun getAllActive(): Flow<List<Location>> =
+        locationDao.getAllActive().map { entities ->
             entities.map { it.toDomain() }
         }
 
     /**
-     * Tutti i manutentori (inclusi inattivi).
+     * Tutte le ubicazioni (incluse inattive).
      */
-    fun getAll(): Flow<List<Maintainer>> =
-        maintainerDao.getAll().map { entities ->
+    fun getAll(): Flow<List<Location>> =
+        locationDao.getAll().map { entities ->
             entities.map { it.toDomain() }
         }
 
     /**
-     * Manutentore per ID (one-shot).
+     * Ubicazione per ID (one-shot).
      */
-    suspend fun getById(id: String): Maintainer? =
-        maintainerDao.getById(id)?.toDomain()
+    suspend fun getById(id: String): Location? =
+        locationDao.getById(id)?.toDomain()
 
     /**
-     * Manutentore per ID (Flow per observe).
+     * Ubicazione per ID (Flow per observe).
      */
-    fun getByIdFlow(id: String): Flow<Maintainer?> =
-        maintainerDao.getByIdFlow(id).map { it?.toDomain() }
+    fun getByIdFlow(id: String): Flow<Location?> =
+        locationDao.getByIdFlow(id).map { it?.toDomain() }
 
     /**
-     * Ricerca per nome o specializzazione.
+     * Sedi principali (senza genitore).
      */
-    fun search(query: String): Flow<List<Maintainer>> =
-        maintainerDao.search(query).map { entities ->
+    fun getRootLocations(): Flow<List<Location>> =
+        locationDao.getRootLocations().map { entities ->
             entities.map { it.toDomain() }
         }
 
     /**
-     * Solo i fornitori (usati per garanzia).
+     * Sotto-ubicazioni di una sede.
      */
-    fun getSuppliers(): Flow<List<Maintainer>> =
-        maintainerDao.getSuppliers().map { entities ->
+    fun getChildren(parentId: String): Flow<List<Location>> =
+        locationDao.getChildren(parentId).map { entities ->
             entities.map { it.toDomain() }
         }
+
+    /**
+     * Conteggio ubicazioni attive.
+     */
+    suspend fun countActive(): Int = locationDao.countActive()
+
+    /**
+     * Conteggio totale ubicazioni.
+     */
+    suspend fun countAll(): Int = locationDao.countAll()
 
     // ═══════════════════════════════════════════════════════════════════════════
     // CRUD
     // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Inserisce un nuovo manutentore.
+     * Inserisce una nuova ubicazione.
      */
-    suspend fun insert(maintainer: Maintainer): String {
+    suspend fun insert(location: Location): String {
         val now = Clock.System.now()
-        val id = maintainer.id.ifEmpty { UUID.randomUUID().toString() }
-        val entity = maintainer.toEntity().copy(
+        val id = location.id.ifEmpty { UUID.randomUUID().toString() }
+        val entity = location.toEntity().copy(
             id = id,
             createdAt = now,
             updatedAt = now
         )
-        maintainerDao.insert(entity)
+        locationDao.insert(entity)
         return id
     }
 
     /**
-     * Aggiorna un manutentore esistente.
+     * Aggiorna un'ubicazione esistente.
      */
-    suspend fun update(maintainer: Maintainer) {
+    suspend fun update(location: Location) {
         val now = Clock.System.now()
-        val entity = maintainer.toEntity().copy(
+        val entity = location.toEntity().copy(
             updatedAt = now
         )
-        maintainerDao.update(entity)
+        locationDao.update(entity)
     }
 
     /**
      * Soft delete.
      */
     suspend fun softDelete(id: String) {
-        maintainerDao.softDelete(id, Clock.System.now())
+        locationDao.softDelete(id, Clock.System.now())
     }
 
     /**
      * Delete definitivo.
      */
-    suspend fun delete(maintainer: Maintainer) {
-        maintainerDao.delete(maintainer.toEntity())
+    suspend fun delete(id: String) {
+        locationDao.deleteById(id)
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -115,44 +125,34 @@ class MaintainerRepository @Inject constructor(
     // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Inserisce più manutentori (per import).
+     * Inserisce più ubicazioni (per import).
      */
-    suspend fun insertAll(maintainers: List<Maintainer>) {
+    suspend fun insertAll(locations: List<Location>) {
         val now = Clock.System.now()
-        val entities = maintainers.map { maintainer ->
-            val id = maintainer.id.ifEmpty { UUID.randomUUID().toString() }
-            maintainer.toEntity().copy(
+        val entities = locations.map { location ->
+            val id = location.id.ifEmpty { UUID.randomUUID().toString() }
+            location.toEntity().copy(
                 id = id,
                 createdAt = now,
                 updatedAt = now
             )
         }
-        maintainerDao.insertAll(entities)
+        locationDao.insertAll(entities)
     }
 
     /**
-     * Elimina tutti i manutentori.
+     * Elimina tutte le ubicazioni.
      */
     suspend fun deleteAll() {
-        maintainerDao.deleteAll()
+        locationDao.deleteAll()
     }
 
     /**
-     * Elimina manutentori con ID che corrispondono al pattern.
+     * Elimina ubicazioni con ID che corrispondono al pattern.
      */
     suspend fun deleteByIdPattern(pattern: String) {
-        maintainerDao.deleteByIdPattern(pattern)
+        locationDao.deleteByIdPattern(pattern)
     }
-
-    /**
-     * Conteggio manutentori attivi.
-     */
-    suspend fun countActive(): Int = maintainerDao.countActive()
-
-    /**
-     * Conteggio totale manutentori.
-     */
-    suspend fun countAll(): Int = maintainerDao.countAll()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -160,43 +160,27 @@ class MaintainerRepository @Inject constructor(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Converte MaintainerEntity in Maintainer (domain model).
+ * Converte LocationEntity in Location (domain model).
  */
-fun MaintainerEntity.toDomain(): Maintainer = Maintainer(
+fun LocationEntity.toDomain(): Location = Location(
     id = id,
     name = name,
-    email = email,
-    phone = phone,
+    parentId = parentId,
     address = address,
-    city = city,
-    postalCode = postalCode,
-    province = province,
-    vatNumber = vatNumber,
-    contactPerson = contactPerson,
-    specialization = specialization,
-    isSupplier = isSupplier,
+    coordinates = coordinates,
     notes = notes,
     isActive = isActive
 )
 
 /**
- * Converte Maintainer (domain model) in MaintainerEntity.
+ * Converte Location (domain model) in LocationEntity.
  */
-fun Maintainer.toEntity(): MaintainerEntity = MaintainerEntity(
+fun Location.toEntity(): LocationEntity = LocationEntity(
     id = id,
     name = name,
-    email = email,
-    phone = phone,
+    parentId = parentId,
     address = address,
-    city = city,
-    postalCode = postalCode,
-    province = province,
-    vatNumber = vatNumber,
-    contactPerson = contactPerson,
-    contactPhone = null,  // Non presente nel domain model
-    contactEmail = null,  // Non presente nel domain model
-    specialization = specialization,
-    isSupplier = isSupplier,
+    coordinates = coordinates,
     notes = notes,
     isActive = isActive,
     createdAt = Clock.System.now(),  // Placeholder

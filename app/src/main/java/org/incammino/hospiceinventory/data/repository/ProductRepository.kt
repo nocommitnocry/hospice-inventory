@@ -300,6 +300,25 @@ class ProductRepository @Inject constructor(
         }
         productDao.insertAll(entities)
     }
+
+    /**
+     * Elimina tutti i prodotti.
+     */
+    suspend fun deleteAll() {
+        productDao.deleteAll()
+    }
+
+    /**
+     * Elimina prodotti con ID che corrispondono al pattern.
+     */
+    suspend fun deleteByIdPattern(pattern: String) {
+        productDao.deleteByIdPattern(pattern)
+    }
+
+    /**
+     * Conteggio totale prodotti.
+     */
+    suspend fun countAll(): Int = productDao.countAll()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

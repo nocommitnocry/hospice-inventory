@@ -252,6 +252,20 @@ class MaintenanceRepository @Inject constructor(
         }
         maintenanceDao.insertAll(entities)
     }
+
+    /**
+     * Elimina tutte le manutenzioni.
+     */
+    suspend fun deleteAll() {
+        maintenanceDao.deleteAll()
+    }
+
+    /**
+     * Elimina manutenzioni di prodotti con ID che corrispondono al pattern.
+     */
+    suspend fun deleteByProductIdPattern(pattern: String) {
+        maintenanceDao.deleteByProductIdPattern(pattern)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

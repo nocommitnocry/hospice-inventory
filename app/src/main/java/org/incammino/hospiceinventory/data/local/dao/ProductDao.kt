@@ -213,6 +213,9 @@ interface ProductDao {
     
     @Query("DELETE FROM products")
     suspend fun deleteAll()
+
+    @Query("DELETE FROM products WHERE id LIKE :pattern")
+    suspend fun deleteByIdPattern(pattern: String)
     
     // ═══════════════════════════════════════════════════════════════════════
     // AGGIORNAMENTI SPECIFICI

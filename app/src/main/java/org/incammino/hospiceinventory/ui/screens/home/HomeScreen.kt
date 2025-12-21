@@ -38,7 +38,9 @@ fun HomeScreen(
     onNavigateToNewProduct: () -> Unit,
     onNavigateToMaintenances: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToScanner: () -> Unit
+    onNavigateToScanner: () -> Unit,
+    onNavigateToMaintainers: () -> Unit = {},
+    onNavigateToLocations: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
