@@ -504,58 +504,6 @@ sealed class TtsState {
     data object Unavailable : TtsState()
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TTS TEXT CLEANER - Rimuove markdown per TTS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * BUGFIX: Rimuove la formattazione markdown e i tag interni dal testo per il TTS.
- * Evita che il TTS legga "asterisco asterisco parola asterisco asterisco" o
- * "TASK UPDATE type RIPARAZIONE".
- */
-object TtsTextCleaner {
-
-    /**
-     * Pulisce il testo rimuovendo markdown e tag interni per una lettura naturale.
-     */
-    fun clean(text: String): String {
-        return text
-            // TAG INTERNI (rimuovere PRIMA di tutto il resto)
-            .replace(Regex("""\[TASK_UPDATE:[^\]]*\]"""), "")
-            .replace(Regex("""\[ACTION:[^\]]*\]"""), "")
-
-            // Bold e italic
-            .replace(Regex("""\*\*\*(.+?)\*\*\*"""), "$1")  // ***bold italic***
-            .replace(Regex("""\*\*(.+?)\*\*"""), "$1")       // **bold**
-            .replace(Regex("""\*(.+?)\*"""), "$1")           // *italic*
-            .replace(Regex("""__(.+?)__"""), "$1")           // __bold__
-            .replace(Regex("""_(.+?)_"""), "$1")             // _italic_
-
-            // Headers
-            .replace(Regex("""^#{1,6}\s*""", RegexOption.MULTILINE), "")
-
-            // Liste
-            .replace(Regex("""^\s*[-*+]\s+""", RegexOption.MULTILINE), "")
-            .replace(Regex("""^\s*\d+\.\s+""", RegexOption.MULTILINE), "")
-
-            // Links [text](url) → text
-            .replace(Regex("""\[([^\]]+)\]\([^)]+\)"""), "$1")
-
-            // Code blocks e inline code
-            .replace(Regex("""```[^`]*```""", RegexOption.DOT_MATCHES_ALL), "")
-            .replace(Regex("""`([^`]+)`"""), "$1")
-
-            // Caratteri residui
-            .replace("*", "")
-            .replace("_", " ")
-            .replace("#", "")
-
-            // Cleanup spazi multipli e newline
-            .replace(Regex("""\s+"""), " ")
-            .trim()
-    }
-}
-
 /**
  * Servizio per la sintesi vocale (Text-to-Speech).
  * Utilizza Android TTS nativo - gratuito e funziona offline.

@@ -631,7 +631,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
   - [x] Accumulo risultati parziali
 - [x] **SttPostProcessor** - Correzione sigle distorte + spelling fonetico italiano
 - [x] **TtsService** - Text-to-Speech Android nativo
-- [x] **GeminiTtsService** - TTS avanzato con architettura per Cloud TTS (fallback Android)
+- [x] **GeminiTtsService** - Gemini 2.5 Flash TTS via REST API (voce Kore, PCM 24kHz) + fallback Android TTS
 - [x] **GeminiService** - AI con function calling, rate limiting, audit logging
   - [x] Contesto arricchito (data corrente, lista manutentori)
   - [x] Ricerca interna durante task MaintenanceRegistration
@@ -704,9 +704,11 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - Fix: Nuovo `SttPostProcessor` con correzioni e alfabeto fonetico
 - File: `SttPostProcessor.kt` (nuovo)
 
-**P6 - TTS qualità** (MEDIO - ARCHITETTURA PRONTA)
-- Fix: Creato `GeminiTtsService` con fallback Android, pronto per Cloud TTS
-- File: `GeminiTtsService.kt` (nuovo)
+**P6 - TTS qualità** (MEDIO - RISOLTO 21/12/2024)
+- Fix: Implementato Gemini 2.5 Flash TTS via REST API con voce "Kore" (italiana)
+- Formato: PCM 24kHz mono 16-bit, riprodotto con AudioTrack
+- Fallback: Android TTS nativo se offline o errori API
+- File: `GeminiTtsService.kt`
 
 ### Sessione 17/12/2024 - Bugfix Loop ActiveTask
 
@@ -725,7 +727,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
   - Tag interni: `[TASK_UPDATE:...]`, `[ACTION:...]`
   - Markdown: bold, italic, headers, liste, links, code blocks
 - Applicato in `VoiceAssistant.speakResponse()` prima di passare al TTS
-- File: `VoiceService.kt`
+- File: `GeminiTtsService.kt` (TtsTextCleaner object)
 
 ---
 
