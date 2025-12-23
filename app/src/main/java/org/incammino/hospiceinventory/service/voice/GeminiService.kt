@@ -752,6 +752,9 @@ class GeminiService @Inject constructor(
             |- CREATE:campo=valore,campo2=valore2 - Nuovo prodotto
             |- START_PRODUCT_CREATION - Avvia creazione prodotto guidata
             |- START_MAINTENANCE:productId:productName - Avvia registrazione manutenzione
+            |- START_MAINTAINER_CREATION - Avvia creazione manutentore/fornitore
+            |- START_LOCATION_CREATION - Avvia creazione ubicazione
+            |- START_ASSIGNEE_CREATION - Avvia creazione assegnatario/responsabile
             |- MAINTENANCE_LIST:filtro - Lista manutenzioni
             |- EMAIL:productId:descrizione - Email manutentore
             |- SCAN:motivo - Scanner barcode
@@ -1245,6 +1248,21 @@ class GeminiService @Inject constructor(
                 }
                 null // Nessuna azione esterna, gestito internamente
             }
+            "START_MAINTAINER_CREATION" -> {
+                // Avvia un task di creazione manutentore/fornitore
+                startMaintainerCreationTask()
+                null // Nessuna azione esterna, gestito internamente
+            }
+            "START_LOCATION_CREATION" -> {
+                // Avvia un task di creazione ubicazione
+                startLocationCreationTask()
+                null // Nessuna azione esterna, gestito internamente
+            }
+            "START_ASSIGNEE_CREATION" -> {
+                // Avvia un task di creazione assegnatario/responsabile
+                startAssigneeCreationTask()
+                null // Nessuna azione esterna, gestito internamente
+            }
             "MAINTENANCE_LIST" -> AssistantAction.ShowMaintenanceList(
                 actionParams.takeIf { it.isNotBlank() }
             )
@@ -1351,6 +1369,36 @@ class GeminiService @Inject constructor(
             )
         )
         Log.d(TAG, "Started MaintenanceRegistration task for product: $productName")
+    }
+
+    /**
+     * Avvia un task di creazione manutentore/fornitore.
+     */
+    private fun startMaintainerCreationTask() {
+        conversationContext = conversationContext.copy(
+            activeTask = ActiveTask.MaintainerCreation()
+        )
+        Log.d(TAG, "Started MaintainerCreation task")
+    }
+
+    /**
+     * Avvia un task di creazione ubicazione.
+     */
+    private fun startLocationCreationTask() {
+        conversationContext = conversationContext.copy(
+            activeTask = ActiveTask.LocationCreation()
+        )
+        Log.d(TAG, "Started LocationCreation task")
+    }
+
+    /**
+     * Avvia un task di creazione assegnatario/responsabile.
+     */
+    private fun startAssigneeCreationTask() {
+        conversationContext = conversationContext.copy(
+            activeTask = ActiveTask.AssigneeCreation()
+        )
+        Log.d(TAG, "Started AssigneeCreation task")
     }
 
     /**

@@ -68,9 +68,12 @@ class ProductEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val productId: String? = savedStateHandle["productId"]
+    // Gestione corretta: "new" dalla route significa nuovo prodotto (non modifica)
+    private val rawProductId: String? = savedStateHandle["productId"]
+    private val isNewProduct = rawProductId == null || rawProductId == "new"
+    private val productId: String? = if (isNewProduct) null else rawProductId
 
-    private val _uiState = MutableStateFlow(ProductEditUiState(isNew = productId == null))
+    private val _uiState = MutableStateFlow(ProductEditUiState(isNew = isNewProduct))
     val uiState: StateFlow<ProductEditUiState> = _uiState.asStateFlow()
 
     init {
