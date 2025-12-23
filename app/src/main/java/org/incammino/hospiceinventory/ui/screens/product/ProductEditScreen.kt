@@ -28,11 +28,17 @@ import org.incammino.hospiceinventory.domain.model.MaintenanceFrequency
 @Composable
 fun ProductEditScreen(
     productId: String?,
+    prefillData: Map<String, String>? = null,
     onNavigateBack: () -> Unit,
     onSaved: (String) -> Unit,
     viewModel: ProductEditViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Applica prefill se presente (solo una volta)
+    LaunchedEffect(prefillData) {
+        prefillData?.let { viewModel.applyPrefill(it) }
+    }
 
     // Naviga dopo il salvataggio
     LaunchedEffect(uiState.savedProductId) {

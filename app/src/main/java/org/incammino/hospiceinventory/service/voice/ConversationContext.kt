@@ -228,6 +228,57 @@ sealed class ActiveTask {
             isSupplier?.let { appendLine("- È fornitore: ${if (it) "Sì" else "No"}") }
         }.ifEmpty { "(nessun dato ancora raccolto)" }
     }
+
+    /**
+     * Creazione di una nuova ubicazione/sede.
+     */
+    data class LocationCreation(
+        val name: String? = null,
+        val parentId: String? = null,
+        val parentName: String? = null,  // Per visualizzazione
+        val address: String? = null,
+        val notes: String? = null,
+        override val startedAt: Instant = Clock.System.now()
+    ) : ActiveTask() {
+
+        override val requiredMissing: List<String>
+            get() = buildList {
+                if (name == null) add("nome ubicazione")
+            }
+
+        /** Descrizione dei dati già raccolti per il prompt */
+        fun toCollectedDataString(): String = buildString {
+            name?.let { appendLine("- Nome: $it") }
+            parentName?.let { appendLine("- Sede padre: $it") }
+            address?.let { appendLine("- Indirizzo: $it") }
+            notes?.let { appendLine("- Note: $it") }
+        }.ifEmpty { "(nessun dato ancora raccolto)" }
+    }
+
+    /**
+     * Creazione di un nuovo assegnatario/responsabile.
+     */
+    data class AssigneeCreation(
+        val name: String? = null,
+        val department: String? = null,
+        val phone: String? = null,
+        val email: String? = null,
+        override val startedAt: Instant = Clock.System.now()
+    ) : ActiveTask() {
+
+        override val requiredMissing: List<String>
+            get() = buildList {
+                if (name == null) add("nome")
+            }
+
+        /** Descrizione dei dati già raccolti per il prompt */
+        fun toCollectedDataString(): String = buildString {
+            name?.let { appendLine("- Nome: $it") }
+            department?.let { appendLine("- Reparto: $it") }
+            phone?.let { appendLine("- Telefono: $it") }
+            email?.let { appendLine("- Email: $it") }
+        }.ifEmpty { "(nessun dato ancora raccolto)" }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

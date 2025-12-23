@@ -35,12 +35,15 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     onNavigateToSearch: (String) -> Unit,
     onNavigateToProduct: (String) -> Unit,
-    onNavigateToNewProduct: () -> Unit,
+    onNavigateToNewProduct: (Map<String, String>?) -> Unit,
     onNavigateToMaintenances: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToScanner: () -> Unit,
     onNavigateToMaintainers: () -> Unit = {},
-    onNavigateToLocations: () -> Unit = {}
+    onNavigateToLocations: () -> Unit = {},
+    onNavigateToNewMaintenance: (String, Map<String, String>?) -> Unit = { _, _ -> },
+    onNavigateToNewMaintainer: (Map<String, String>?) -> Unit = {},
+    onNavigateToNewLocation: (Map<String, String>?) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -50,9 +53,12 @@ fun HomeScreen(
             when (action) {
                 is NavigationAction.ToSearch -> onNavigateToSearch(action.query)
                 is NavigationAction.ToProduct -> onNavigateToProduct(action.productId)
-                is NavigationAction.ToNewProduct -> onNavigateToNewProduct()
+                is NavigationAction.ToNewProduct -> onNavigateToNewProduct(action.prefill)
                 is NavigationAction.ToMaintenances -> onNavigateToMaintenances()
                 is NavigationAction.ToScanner -> onNavigateToScanner()
+                is NavigationAction.ToNewMaintenance -> onNavigateToNewMaintenance(action.productId, action.prefill)
+                is NavigationAction.ToNewMaintainer -> onNavigateToNewMaintainer(action.prefill)
+                is NavigationAction.ToNewLocation -> onNavigateToNewLocation(action.prefill)
             }
             viewModel.consumeNavigation()
         }
@@ -137,7 +143,7 @@ fun HomeScreen(
             QuickActionsGrid(
                 onScanClick = onNavigateToScanner,
                 onSearchClick = { onNavigateToSearch("") },
-                onNewClick = onNavigateToNewProduct,
+                onNewClick = { onNavigateToNewProduct(null) },
                 onMaintenancesClick = onNavigateToMaintenances
             )
 

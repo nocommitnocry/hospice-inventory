@@ -1,5 +1,6 @@
 package org.incammino.hospiceinventory.ui.screens.home
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -10,6 +11,10 @@ import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
+import org.incammino.hospiceinventory.data.repository.AssigneeRepository
+import org.incammino.hospiceinventory.data.repository.LocationRepository
+import org.incammino.hospiceinventory.data.repository.MaintainerRepository
+import org.incammino.hospiceinventory.data.repository.MaintenanceRepository
 import org.incammino.hospiceinventory.data.repository.ProductRepository
 import org.incammino.hospiceinventory.service.voice.AssistantAction
 import org.incammino.hospiceinventory.service.voice.AssistantState
@@ -45,9 +50,12 @@ data class HomeUiState(
 sealed class NavigationAction {
     data class ToSearch(val query: String) : NavigationAction()
     data class ToProduct(val productId: String) : NavigationAction()
-    data object ToNewProduct : NavigationAction()
+    data class ToNewProduct(val prefill: Map<String, String>? = null) : NavigationAction()
     data class ToMaintenances(val filter: String?) : NavigationAction()
     data object ToScanner : NavigationAction()
+    data class ToNewMaintenance(val productId: String, val prefill: Map<String, String>? = null) : NavigationAction()
+    data class ToNewMaintainer(val prefill: Map<String, String>? = null) : NavigationAction()
+    data class ToNewLocation(val prefill: Map<String, String>? = null) : NavigationAction()
 }
 
 /**
@@ -57,8 +65,16 @@ sealed class NavigationAction {
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val productRepository: ProductRepository,
+    private val maintenanceRepository: MaintenanceRepository,
+    private val maintainerRepository: MaintainerRepository,
+    private val locationRepository: LocationRepository,
+    private val assigneeRepository: AssigneeRepository,
     private val voiceAssistant: VoiceAssistant
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "HomeViewModel"
+    }
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -253,20 +269,93 @@ class HomeViewModel @Inject constructor(
      * Gestisce le azioni richieste dall'assistente AI.
      */
     private fun handleAssistantAction(action: AssistantAction) {
-        val navAction = when (action) {
-            is AssistantAction.SearchProducts -> NavigationAction.ToSearch(action.query)
-            is AssistantAction.ShowProduct -> NavigationAction.ToProduct(action.productId)
-            is AssistantAction.CreateProduct -> NavigationAction.ToNewProduct
-            is AssistantAction.ShowMaintenanceList -> NavigationAction.ToMaintenances(action.filter)
-            is AssistantAction.ScanBarcode -> NavigationAction.ToScanner
-            is AssistantAction.ShowOverdueAlerts -> NavigationAction.ToMaintenances("overdue")
+        when (action) {
+            // ═══════════════════════════════════════════════════════════════════
+            // AZIONI DI NAVIGAZIONE
+            // ═══════════════════════════════════════════════════════════════════
+            is AssistantAction.SearchProducts -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToSearch(action.query)) }
+            }
+            is AssistantAction.ShowProduct -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToProduct(action.productId)) }
+            }
+            is AssistantAction.CreateProduct -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToNewProduct(action.prefillData)) }
+            }
+            is AssistantAction.ShowMaintenanceList -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToMaintenances(action.filter)) }
+            }
+            is AssistantAction.ScanBarcode -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToScanner) }
+            }
+            is AssistantAction.ShowOverdueAlerts -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToMaintenances("overdue")) }
+            }
             is AssistantAction.PrepareEmail -> {
-                // Per email, vai al dettaglio prodotto
-                NavigationAction.ToProduct(action.productId)
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToProduct(action.productId)) }
+            }
+            is AssistantAction.NavigateToNewMaintenance -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToNewMaintenance(action.productId, action.prefillData)) }
+            }
+            is AssistantAction.NavigateToNewMaintainer -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToNewMaintainer(action.prefillData)) }
+            }
+            is AssistantAction.NavigateToNewLocation -> {
+                _uiState.update { it.copy(pendingNavigation = NavigationAction.ToNewLocation(action.prefillData)) }
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
+            // AZIONI DI SALVATAGGIO DIRETTO (da flusso vocale)
+            // ═══════════════════════════════════════════════════════════════════
+            is AssistantAction.SaveMaintenance -> {
+                viewModelScope.launch {
+                    try {
+                        val id = maintenanceRepository.insert(action.maintenance, updateProductDates = true)
+                        Log.i(TAG, "Manutenzione salvata con ID: $id")
+                        // Opzionale: navigare al dettaglio prodotto dopo il salvataggio
+                        _uiState.update {
+                            it.copy(pendingNavigation = NavigationAction.ToProduct(action.maintenance.productId))
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Errore salvataggio manutenzione", e)
+                        _uiState.update { it.copy(aiResponse = "Errore durante il salvataggio: ${e.message}") }
+                    }
+                }
+            }
+            is AssistantAction.SaveMaintainer -> {
+                viewModelScope.launch {
+                    try {
+                        val id = maintainerRepository.insert(action.maintainer)
+                        Log.i(TAG, "Manutentore salvato con ID: $id")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Errore salvataggio manutentore", e)
+                        _uiState.update { it.copy(aiResponse = "Errore durante il salvataggio: ${e.message}") }
+                    }
+                }
+            }
+            is AssistantAction.SaveLocation -> {
+                viewModelScope.launch {
+                    try {
+                        val id = locationRepository.insert(action.location)
+                        Log.i(TAG, "Ubicazione salvata con ID: $id")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Errore salvataggio ubicazione", e)
+                        _uiState.update { it.copy(aiResponse = "Errore durante il salvataggio: ${e.message}") }
+                    }
+                }
+            }
+            is AssistantAction.SaveAssignee -> {
+                viewModelScope.launch {
+                    try {
+                        val id = assigneeRepository.insert(action.assignee)
+                        Log.i(TAG, "Assegnatario salvato con ID: $id")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Errore salvataggio assegnatario", e)
+                        _uiState.update { it.copy(aiResponse = "Errore durante il salvataggio: ${e.message}") }
+                    }
+                }
             }
         }
-
-        _uiState.update { it.copy(pendingNavigation = navAction) }
     }
 
     /**

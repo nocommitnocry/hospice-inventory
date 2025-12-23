@@ -330,4 +330,50 @@ class ProductEditViewModel @Inject constructor(
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PREFILL DA FLUSSO VOCALE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Applica dati prefill dal flusso vocale.
+     * I campi supportati sono: name, category, brand, model, location, barcode, notes.
+     * Brand e model vengono aggiunti alla description.
+     */
+    fun applyPrefill(data: Map<String, String>) {
+        _uiState.update { state ->
+            var updated = state
+
+            data["name"]?.let { updated = updated.copy(name = it) }
+            data["category"]?.let { updated = updated.copy(category = it) }
+            data["location"]?.let { updated = updated.copy(location = it) }
+            data["barcode"]?.let { updated = updated.copy(barcode = it) }
+            data["notes"]?.let { updated = updated.copy(notes = it) }
+            data["supplier"]?.let { updated = updated.copy(supplier = it) }
+
+            // Brand e model vanno nella description
+            val brand = data["brand"]
+            val model = data["model"]
+            if (brand != null || model != null) {
+                val existingDesc = updated.description.trim()
+                val brandModel = listOfNotNull(
+                    brand?.let { "Marca: $it" },
+                    model?.let { "Modello: $it" }
+                ).joinToString(", ")
+                val newDesc = if (existingDesc.isEmpty()) brandModel
+                              else "$existingDesc\n$brandModel"
+                updated = updated.copy(description = newDesc)
+            }
+
+            // warrantyEndDate se specificato come mesi
+            data["warrantyMonths"]?.toIntOrNull()?.let { months ->
+                val today = Clock.System.now()
+                    .toLocalDateTime(TimeZone.currentSystemDefault()).date
+                val endDate = today.plus(DatePeriod(months = months))
+                updated = updated.copy(warrantyEndDate = endDate)
+            }
+
+            updated
+        }
+    }
 }

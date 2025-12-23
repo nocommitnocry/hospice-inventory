@@ -7,6 +7,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.incammino.hospiceinventory.ui.screens.home.HomeScreen
 import org.incammino.hospiceinventory.ui.screens.search.SearchScreen
 import org.incammino.hospiceinventory.ui.screens.product.ProductDetailScreen
@@ -20,6 +22,8 @@ import org.incammino.hospiceinventory.ui.screens.location.LocationEditScreen
 import org.incammino.hospiceinventory.ui.screens.settings.SettingsScreen
 import org.incammino.hospiceinventory.ui.screens.settings.DataManagementScreen
 import org.incammino.hospiceinventory.ui.screens.scanner.ScannerScreen
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 /**
  * Route di navigazione dell'app.
@@ -32,8 +36,13 @@ sealed class Screen(val route: String) {
     data object ProductDetail : Screen("product/{productId}") {
         fun createRoute(productId: String) = "product/$productId"
     }
-    data object ProductEdit : Screen("product/edit/{productId}") {
-        fun createRoute(productId: String?) = "product/edit/${productId ?: "new"}"
+    data object ProductEdit : Screen("product/edit/{productId}?prefill={prefill}") {
+        fun createRoute(productId: String?, prefill: Map<String, String>? = null): String {
+            val prefillJson = prefill?.let {
+                URLEncoder.encode(Json.encodeToString(it), StandardCharsets.UTF_8.toString())
+            } ?: ""
+            return "product/edit/${productId ?: "new"}?prefill=$prefillJson"
+        }
     }
     data object MaintenanceList : Screen("maintenances")
     data object MaintenanceEdit : Screen("maintenance/edit/{maintenanceId}?productId={productId}") {
@@ -83,8 +92,8 @@ fun HospiceNavHost(
                 onNavigateToProduct = { productId ->
                     navController.navigate(Screen.ProductDetail.createRoute(productId))
                 },
-                onNavigateToNewProduct = {
-                    navController.navigate(Screen.ProductEdit.createRoute(null))
+                onNavigateToNewProduct = { prefill ->
+                    navController.navigate(Screen.ProductEdit.createRoute(null, prefill))
                 },
                 onNavigateToMaintenances = {
                     navController.navigate(Screen.MaintenanceList.route)
@@ -100,6 +109,15 @@ fun HospiceNavHost(
                 },
                 onNavigateToLocations = {
                     navController.navigate(Screen.LocationList.route)
+                },
+                onNavigateToNewMaintenance = { productId, _ ->
+                    navController.navigate(Screen.MaintenanceEdit.createRoute(null, productId))
+                },
+                onNavigateToNewMaintainer = { _ ->
+                    navController.navigate(Screen.MaintainerEdit.createRoute(null))
+                },
+                onNavigateToNewLocation = { _ ->
+                    navController.navigate(Screen.LocationEdit.createRoute(null))
                 }
             )
         }
@@ -151,13 +169,28 @@ fun HospiceNavHost(
         composable(
             route = Screen.ProductEdit.route,
             arguments = listOf(
-                navArgument("productId") { type = NavType.StringType }
+                navArgument("productId") { type = NavType.StringType },
+                navArgument("prefill") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
             )
         ) { backStackEntry ->
             val productId = backStackEntry.arguments?.getString("productId")
+            val prefillJson = backStackEntry.arguments?.getString("prefill")?.takeIf { it.isNotEmpty() }
             val isNew = productId == "new"
+            // Decodifica prefill se presente
+            val prefillData = prefillJson?.let {
+                try {
+                    val decoded = java.net.URLDecoder.decode(it, StandardCharsets.UTF_8.toString())
+                    Json.decodeFromString<Map<String, String>>(decoded)
+                } catch (e: Exception) {
+                    null
+                }
+            }
             ProductEditScreen(
                 productId = if (isNew) null else productId,
+                prefillData = prefillData,
                 onNavigateBack = { navController.popBackStack() },
                 onSaved = { savedProductId ->
                     navController.popBackStack()

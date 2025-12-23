@@ -14,11 +14,20 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
+import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
+import org.incammino.hospiceinventory.data.repository.AssigneeRepository
+import org.incammino.hospiceinventory.data.repository.LocationRepository
 import org.incammino.hospiceinventory.data.repository.MaintainerRepository
+import org.incammino.hospiceinventory.data.repository.MaintenanceRepository
 import org.incammino.hospiceinventory.data.repository.ProductRepository
+import org.incammino.hospiceinventory.domain.model.Assignee
+import org.incammino.hospiceinventory.domain.model.Location
+import org.incammino.hospiceinventory.domain.model.Maintainer
+import org.incammino.hospiceinventory.domain.model.Maintenance
 import org.incammino.hospiceinventory.domain.model.MaintenanceType
 import org.incammino.hospiceinventory.domain.model.Product
 import javax.inject.Inject
@@ -105,6 +114,42 @@ sealed class AssistantAction {
     }
 
     data object ShowOverdueAlerts : AssistantAction() {
+        override val riskLevel = ActionRiskLevel.LOW
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SAVE ACTIONS - Salvataggio diretto da flusso vocale
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    data class SaveMaintenance(val maintenance: Maintenance) : AssistantAction() {
+        override val riskLevel = ActionRiskLevel.MEDIUM
+    }
+
+    data class SaveMaintainer(val maintainer: Maintainer) : AssistantAction() {
+        override val riskLevel = ActionRiskLevel.MEDIUM
+    }
+
+    data class SaveLocation(val location: Location) : AssistantAction() {
+        override val riskLevel = ActionRiskLevel.MEDIUM
+    }
+
+    data class SaveAssignee(val assignee: Assignee) : AssistantAction() {
+        override val riskLevel = ActionRiskLevel.MEDIUM
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NAVIGATION ACTIONS - Con prefill per UI
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    data class NavigateToNewMaintainer(val prefillData: Map<String, String>?) : AssistantAction() {
+        override val riskLevel = ActionRiskLevel.LOW
+    }
+
+    data class NavigateToNewLocation(val prefillData: Map<String, String>?) : AssistantAction() {
+        override val riskLevel = ActionRiskLevel.LOW
+    }
+
+    data class NavigateToNewMaintenance(val productId: String, val prefillData: Map<String, String>?) : AssistantAction() {
         override val riskLevel = ActionRiskLevel.LOW
     }
 }
@@ -363,7 +408,10 @@ object AuditLogger {
 class GeminiService @Inject constructor(
     private val generativeModel: GenerativeModel,
     private val productRepository: ProductRepository,
-    private val maintainerRepository: MaintainerRepository  // P3 FIX: Per contesto manutentori
+    private val maintainerRepository: MaintainerRepository,
+    private val maintenanceRepository: MaintenanceRepository,
+    private val locationRepository: LocationRepository,
+    private val assigneeRepository: AssigneeRepository
 ) {
     private var conversationContext = ConversationContext()
     private val rateLimiter = RateLimiter(maxRequests = 15, windowDuration = 1.minutes)
@@ -541,12 +589,14 @@ class GeminiService @Inject constructor(
 
     /**
      * Completa il task attivo e restituisce l'azione appropriata.
+     * BUGFIX: Ora salva effettivamente i dati tramite AssistantAction.Save*
      */
     private fun completeActiveTask(): GeminiResult {
         val task = conversationContext.activeTask ?: return GeminiResult.Success("Nessun task attivo.")
 
         return when (task) {
             is ActiveTask.ProductCreation -> {
+                // Prodotto: apre UI con prefill (troppi campi per salvataggio vocale diretto)
                 val prefillData = buildMap {
                     task.name?.let { put("name", it) }
                     task.category?.let { put("category", it) }
@@ -566,20 +616,98 @@ class GeminiService @Inject constructor(
                     )
                 )
             }
+
             is ActiveTask.MaintenanceRegistration -> {
-                // Per ora restituisce un messaggio, in futuro implementeremo l'azione
+                // Manutenzione: salva direttamente se tutti i dati obbligatori sono presenti
+                val now = Clock.System.now()
+                val maintenance = Maintenance(
+                    id = "",  // Generato dal repository
+                    productId = task.productId,
+                    maintainerId = null,  // Da inferire se possibile
+                    date = task.date?.let {
+                        kotlinx.datetime.LocalDateTime(it.year, it.monthNumber, it.dayOfMonth, 12, 0, 0)
+                            .toInstant(TimeZone.currentSystemDefault())
+                    } ?: now,
+                    type = task.type ?: MaintenanceType.RIPARAZIONE,
+                    outcome = null,
+                    notes = task.description,
+                    cost = task.cost,
+                    invoiceNumber = null,
+                    isWarrantyWork = task.isWarrantyWork ?: false,
+                    requestEmailSent = false,
+                    reportEmailSent = false
+                )
                 conversationContext = conversationContext.copy(activeTask = null)
                 addAssistantExchangeAndReturn(
-                    GeminiResult.Success(
-                        "Manutenzione pronta per la registrazione:\n${task.toCollectedDataString()}"
+                    GeminiResult.ActionRequired(
+                        AssistantAction.SaveMaintenance(maintenance),
+                        "Manutenzione registrata per ${task.productName}!"
                     )
                 )
             }
+
             is ActiveTask.MaintainerCreation -> {
+                // Manutentore: salva direttamente
+                val maintainer = Maintainer(
+                    id = "",  // Generato dal repository
+                    name = task.name ?: task.company ?: "Manutentore senza nome",
+                    email = task.email,
+                    phone = task.phone,
+                    address = task.address,
+                    city = task.city,
+                    postalCode = null,
+                    province = null,
+                    vatNumber = null,
+                    contactPerson = null,
+                    specialization = task.specializations?.firstOrNull(),
+                    isSupplier = task.isSupplier ?: false,
+                    notes = null,
+                    isActive = true
+                )
                 conversationContext = conversationContext.copy(activeTask = null)
                 addAssistantExchangeAndReturn(
-                    GeminiResult.Success(
-                        "Manutentore pronto per la registrazione:\n${task.toCollectedDataString()}"
+                    GeminiResult.ActionRequired(
+                        AssistantAction.SaveMaintainer(maintainer),
+                        "Manutentore ${maintainer.name} registrato!"
+                    )
+                )
+            }
+
+            is ActiveTask.LocationCreation -> {
+                // Ubicazione: salva direttamente
+                val location = Location(
+                    id = "",  // Generato dal repository
+                    name = task.name ?: "Ubicazione senza nome",
+                    parentId = task.parentId,
+                    address = task.address,
+                    coordinates = null,
+                    notes = task.notes,
+                    isActive = true
+                )
+                conversationContext = conversationContext.copy(activeTask = null)
+                addAssistantExchangeAndReturn(
+                    GeminiResult.ActionRequired(
+                        AssistantAction.SaveLocation(location),
+                        "Ubicazione ${location.name} registrata!"
+                    )
+                )
+            }
+
+            is ActiveTask.AssigneeCreation -> {
+                // Assegnatario: salva direttamente
+                val assignee = Assignee(
+                    id = "",  // Generato dal repository
+                    name = task.name ?: "Assegnatario senza nome",
+                    department = task.department,
+                    phone = task.phone,
+                    email = task.email,
+                    isActive = true
+                )
+                conversationContext = conversationContext.copy(activeTask = null)
+                addAssistantExchangeAndReturn(
+                    GeminiResult.ActionRequired(
+                        AssistantAction.SaveAssignee(assignee),
+                        "Assegnatario ${assignee.name} registrato!"
                     )
                 )
             }
@@ -702,6 +830,32 @@ class GeminiService @Inject constructor(
                 |ISTRUZIONI TASK:
                 |- Estrai nome/azienda, contatti (email, telefono), indirizzo se fornito
                 |- Chiedi se è anche fornitore oltre che manutentore
+            """.trimMargin()
+
+            is ActiveTask.LocationCreation -> """
+                |
+                |TASK IN CORSO: Creazione nuova ubicazione
+                |DATI GIÀ RACCOLTI:
+                |${task.toCollectedDataString()}
+                |CAMPI OBBLIGATORI MANCANTI: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+                |
+                |ISTRUZIONI TASK:
+                |- Estrai nome ubicazione (es. "Stanza 12", "Magazzino", "Piano 2")
+                |- Se specificata, estrai ubicazione padre (es. "sotto Reparto Degenza")
+                |- Indirizzo se fornito
+            """.trimMargin()
+
+            is ActiveTask.AssigneeCreation -> """
+                |
+                |TASK IN CORSO: Creazione nuovo assegnatario/responsabile
+                |DATI GIÀ RACCOLTI:
+                |${task.toCollectedDataString()}
+                |CAMPI OBBLIGATORI MANCANTI: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+                |
+                |ISTRUZIONI TASK:
+                |- Estrai nome della persona o reparto
+                |- Se specificato, estrai reparto/dipartimento
+                |- Contatti (telefono, email) se forniti
             """.trimMargin()
         }
     }
@@ -1022,6 +1176,18 @@ class GeminiService @Inject constructor(
             |${task.toCollectedDataString()}
             |Campi mancanti: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
         """.trimMargin()
+        is ActiveTask.LocationCreation -> """
+            |TASK IN CORSO: Creazione Nuova Ubicazione
+            |Dati già raccolti:
+            |${task.toCollectedDataString()}
+            |Campi mancanti: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+        """.trimMargin()
+        is ActiveTask.AssigneeCreation -> """
+            |TASK IN CORSO: Registrazione Assegnatario/Responsabile
+            |Dati già raccolti:
+            |${task.toCollectedDataString()}
+            |Campi mancanti: ${task.requiredMissing.joinToString(", ").ifEmpty { "nessuno" }}
+        """.trimMargin()
     }
 
     /**
@@ -1216,6 +1382,18 @@ class GeminiService @Inject constructor(
                 email = updates["email"] as? String ?: currentTask.email,
                 phone = updates["phone"] as? String ?: currentTask.phone
             )
+            is ActiveTask.LocationCreation -> currentTask.copy(
+                name = updates["name"] as? String ?: currentTask.name,
+                parentName = updates["parentName"] as? String ?: currentTask.parentName,
+                address = updates["address"] as? String ?: currentTask.address,
+                notes = updates["notes"] as? String ?: currentTask.notes
+            )
+            is ActiveTask.AssigneeCreation -> currentTask.copy(
+                name = updates["name"] as? String ?: currentTask.name,
+                department = updates["department"] as? String ?: currentTask.department,
+                phone = updates["phone"] as? String ?: currentTask.phone,
+                email = updates["email"] as? String ?: currentTask.email
+            )
         }
 
         conversationContext = conversationContext.copy(activeTask = updatedTask)
@@ -1316,6 +1494,28 @@ class GeminiService @Inject constructor(
                 )
                 conversationContext = conversationContext.copy(activeTask = newTask)
                 Log.d(TAG, "MaintainerCreation task updated: $newTask")
+            }
+
+            is ActiveTask.LocationCreation -> {
+                val newTask = task.copy(
+                    name = updates["name"] ?: task.name,
+                    parentName = updates["parent"] ?: updates["parentname"] ?: task.parentName,
+                    address = updates["address"] ?: task.address,
+                    notes = updates["notes"] ?: task.notes
+                )
+                conversationContext = conversationContext.copy(activeTask = newTask)
+                Log.d(TAG, "LocationCreation task updated: $newTask")
+            }
+
+            is ActiveTask.AssigneeCreation -> {
+                val newTask = task.copy(
+                    name = updates["name"] ?: task.name,
+                    department = updates["department"] ?: updates["reparto"] ?: task.department,
+                    phone = updates["phone"] ?: task.phone,
+                    email = updates["email"] ?: task.email
+                )
+                conversationContext = conversationContext.copy(activeTask = newTask)
+                Log.d(TAG, "AssigneeCreation task updated: $newTask")
             }
         }
     }
