@@ -334,16 +334,22 @@ VoiceAssistantManager (orchestratore)
 Gemini risponde con tag `[ACTION:tipo:parametri]` che vengono parsati:
 
 ```kotlin
-// Azioni disponibili
+// CREAZIONE ENTITÀ (task guidati multi-step)
+- START_PRODUCT_CREATION          // Avvia creazione prodotto
+- START_MAINTENANCE:id:nome       // Avvia registrazione manutenzione
+- START_MAINTAINER_CREATION       // Avvia creazione manutentore/fornitore
+- START_LOCATION_CREATION         // Avvia creazione ubicazione
+- START_ASSIGNEE_CREATION         // Avvia creazione assegnatario
+
+// ALTRE AZIONI
 - SEARCH:query                    // Cerca prodotti
 - SHOW:productId                  // Mostra dettaglio
-- CREATE:campo=valore,campo2=val  // Nuovo prodotto con prefill
-- START_PRODUCT_CREATION          // Avvia creazione guidata
-- START_MAINTENANCE:id:nome       // Avvia registrazione manutenzione
 - MAINTENANCE_LIST:filtro         // Lista manutenzioni
 - EMAIL:productId:descrizione     // Email manutentore
 - SCAN:motivo                     // Scanner barcode
 - ALERTS                          // Mostra scadenze
+
+// DEPRECATO: CREATE:campo=valore → ora unificato con START_PRODUCT_CREATION
 ```
 
 ### Contesto Conversazionale Multi-Turno
@@ -378,7 +384,20 @@ sealed class ActiveTask {
         val type: MaintenanceType?, val description: String?, ...
     ) : ActiveTask()
 
-    data class MaintainerCreation(...) : ActiveTask()
+    data class MaintainerCreation(
+        val name: String?, val company: String?,
+        val email: String?, val phone: String?, ...
+    ) : ActiveTask()
+
+    data class LocationCreation(
+        val name: String?, val parentId: String?,
+        val address: String?, val notes: String?
+    ) : ActiveTask()
+
+    data class AssigneeCreation(
+        val name: String?, val department: String?,
+        val phone: String?, val email: String?
+    ) : ActiveTask()
 }
 ```
 
@@ -623,6 +642,8 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - [x] **ProductRepository** - CRUD prodotti + query scadenze
 - [x] **MaintainerRepository** - CRUD manutentori
 - [x] **MaintenanceRepository** - CRUD manutenzioni
+- [x] **LocationRepository** - CRUD ubicazioni
+- [x] **AssigneeRepository** - CRUD assegnatari (aggiunto 23/12/2025)
 
 #### Servizi Vocali
 - [x] **VoiceService** - Speech-to-Text (Google Speech Recognition)
@@ -637,7 +658,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
   - [x] Ricerca interna durante task MaintenanceRegistration
   - [x] Temperature ridotta a 0.4 per maggiore precisione
 - [x] **ConversationContext** - Contesto conversazionale multi-turno
-- [x] **ActiveTask** - Task multi-step (ProductCreation, MaintenanceRegistration, MaintainerCreation)
+- [x] **ActiveTask** - Task multi-step (ProductCreation, MaintenanceRegistration, MaintainerCreation, LocationCreation, AssigneeCreation)
 - [x] **SpeakerInference** - Inferenza manutentore vs operatore
 - [x] **UserIntentDetector** - Rilevamento "basta così", "annulla"
 - [x] **EnumMatcher** - Matching fuzzy per categorie/tipi
@@ -728,6 +749,45 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
   - Markdown: bold, italic, headers, liste, links, code blocks
 - Applicato in `VoiceAssistant.speakResponse()` prima di passare al TTS
 - File: `GeminiTtsService.kt` (TtsTextCleaner object)
+
+### Sessione 23/12/2025 - Voice Flow Entity Creation
+
+**P9 - ProductEditViewModel isNew errato** (CRITICO - RISOLTO)
+- Problema: Route `product/edit/new` → `savedStateHandle["productId"]` restituisce `"new"` (stringa), non `null`
+- Effetto: `isNew = productId == null` → `false` ❌ (modalità MODIFICA invece di CREAZIONE)
+- Fix: Logica corretta per gestire `"new"` come nuovo prodotto:
+  ```kotlin
+  val rawProductId: String? = savedStateHandle["productId"]
+  val isNewProduct = rawProductId == null || rawProductId == "new"
+  val productId: String? = if (isNewProduct) null else rawProductId
+  ```
+- File: `ProductEditViewModel.kt` (linee 71-74)
+
+**P10 - Azioni creazione entità mancanti** (ALTO - RISOLTO)
+- Problema: Mancavano action tags per avviare creazione manutentori, ubicazioni, assegnatari
+- Fix: Aggiunti al system prompt e parsing:
+  - `START_MAINTAINER_CREATION` - Nuovo manutentore/fornitore
+  - `START_LOCATION_CREATION` - Nuova ubicazione
+  - `START_ASSIGNEE_CREATION` - Nuovo assegnatario
+- Nuovi metodi: `startMaintainerCreationTask()`, `startLocationCreationTask()`, `startAssigneeCreationTask()`
+- File: `GeminiService.kt`
+
+**P11 - CREATE generico confondeva Gemini** (MEDIO - RISOLTO)
+- Problema: `CREATE:campo=valore` veniva usato per qualsiasi entità, non solo prodotti
+- Fix:
+  - Prompt riorganizzato con sezione "CREAZIONE ENTITÀ" dedicata
+  - `CREATE` unificato con `START_PRODUCT_CREATION` (entrambi avviano task guidato)
+  - Aggiunto `startProductCreationTaskWithPrefill()` per CREATE con parametri
+  - Nota esplicita: "Non usare CREATE generico"
+- File: `GeminiService.kt`
+
+**P12 - Voice-first flow (Opzione 3)** (ENHANCEMENT)
+- Scelta architetturale: Salvataggio diretto da voice, UI opzionale per dettagli
+- Messaggi di risposta migliorati con conferma dati salvati:
+  - Manutentore: "X registrato (email: y, tel: z). Posso aggiungere altri dettagli se vuoi."
+  - Ubicazione: "X (sotto Y) registrata."
+  - Assegnatario: "X del reparto Y registrato."
+- File: `GeminiService.kt` (completeActiveTask)
 
 ---
 

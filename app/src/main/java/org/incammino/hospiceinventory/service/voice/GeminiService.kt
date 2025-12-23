@@ -665,10 +665,18 @@ class GeminiService @Inject constructor(
                     isActive = true
                 )
                 conversationContext = conversationContext.copy(activeTask = null)
+
+                // Costruisce messaggio con dettagli salvati
+                val details = listOfNotNull(
+                    maintainer.email?.let { "email: $it" },
+                    maintainer.phone?.let { "tel: $it" }
+                ).joinToString(", ")
+                val detailsMsg = if (details.isNotEmpty()) " ($details)" else ""
+
                 addAssistantExchangeAndReturn(
                     GeminiResult.ActionRequired(
                         AssistantAction.SaveMaintainer(maintainer),
-                        "Manutentore ${maintainer.name} registrato!"
+                        "Manutentore ${maintainer.name} registrato$detailsMsg. Posso aggiungere altri dettagli se vuoi."
                     )
                 )
             }
@@ -685,10 +693,13 @@ class GeminiService @Inject constructor(
                     isActive = true
                 )
                 conversationContext = conversationContext.copy(activeTask = null)
+
+                val parentInfo = task.parentName?.let { " (sotto $it)" } ?: ""
+
                 addAssistantExchangeAndReturn(
                     GeminiResult.ActionRequired(
                         AssistantAction.SaveLocation(location),
-                        "Ubicazione ${location.name} registrata!"
+                        "Ubicazione ${location.name}$parentInfo registrata."
                     )
                 )
             }
@@ -704,10 +715,13 @@ class GeminiService @Inject constructor(
                     isActive = true
                 )
                 conversationContext = conversationContext.copy(activeTask = null)
+
+                val deptInfo = task.department?.let { " del reparto $it" } ?: ""
+
                 addAssistantExchangeAndReturn(
                     GeminiResult.ActionRequired(
                         AssistantAction.SaveAssignee(assignee),
-                        "Assegnatario ${assignee.name} registrato!"
+                        "Assegnatario ${assignee.name}$deptInfo registrato."
                     )
                 )
             }
@@ -746,19 +760,22 @@ class GeminiService @Inject constructor(
             |
             |Se serve un'azione, aggiungi il tag: [ACTION:tipo:parametri]
             |
-            |Azioni disponibili:
+            |CREAZIONE ENTITÀ (usa l'azione corretta per ogni tipo):
+            |- START_PRODUCT_CREATION - Nuovo PRODOTTO (avvia raccolta dati guidata)
+            |- START_MAINTENANCE:productId:productName - Registra MANUTENZIONE su prodotto
+            |- START_MAINTAINER_CREATION - Nuovo MANUTENTORE o FORNITORE
+            |- START_LOCATION_CREATION - Nuova UBICAZIONE
+            |- START_ASSIGNEE_CREATION - Nuovo ASSEGNATARIO/responsabile
+            |
+            |ALTRE AZIONI:
             |- SEARCH:query - Cerca prodotti
             |- SHOW:productId - Mostra dettaglio prodotto
-            |- CREATE:campo=valore,campo2=valore2 - Nuovo prodotto
-            |- START_PRODUCT_CREATION - Avvia creazione prodotto guidata
-            |- START_MAINTENANCE:productId:productName - Avvia registrazione manutenzione
-            |- START_MAINTAINER_CREATION - Avvia creazione manutentore/fornitore
-            |- START_LOCATION_CREATION - Avvia creazione ubicazione
-            |- START_ASSIGNEE_CREATION - Avvia creazione assegnatario/responsabile
             |- MAINTENANCE_LIST:filtro - Lista manutenzioni
             |- EMAIL:productId:descrizione - Email manutentore
             |- SCAN:motivo - Scanner barcode
             |- ALERTS - Mostra scadenze
+            |
+            |IMPORTANTE: Non usare CREATE generico. Usa sempre START_*_CREATION per la creazione guidata.
         """.trimMargin()
     }
 
@@ -1226,18 +1243,18 @@ class GeminiService @Inject constructor(
         val action = when (actionType) {
             "SEARCH" -> AssistantAction.SearchProducts(actionParams)
             "SHOW" -> AssistantAction.ShowProduct(actionParams)
-            "CREATE" -> {
-                val prefill = if (actionParams.isNotBlank()) {
-                    actionParams.split(",").associate {
+            "CREATE", "START_PRODUCT_CREATION" -> {
+                // Entrambi avviano il task di creazione prodotto guidata
+                // Se CREATE ha parametri, li usa come prefill iniziale
+                if (actionParams.isNotBlank()) {
+                    val prefill = actionParams.split(",").associate {
                         val parts = it.split("=")
                         parts[0].trim() to parts.getOrElse(1) { "" }.trim()
                     }
-                } else null
-                AssistantAction.CreateProduct(prefill)
-            }
-            "START_PRODUCT_CREATION" -> {
-                // Avvia un task di creazione prodotto guidata
-                startProductCreationTask()
+                    startProductCreationTaskWithPrefill(prefill)
+                } else {
+                    startProductCreationTask()
+                }
                 null // Nessuna azione esterna, gestito internamente
             }
             "START_MAINTENANCE" -> {
@@ -1356,6 +1373,24 @@ class GeminiService @Inject constructor(
             activeTask = ActiveTask.ProductCreation()
         )
         Log.d(TAG, "Started ProductCreation task")
+    }
+
+    /**
+     * Avvia un task di creazione prodotto guidata con dati prefill.
+     */
+    private fun startProductCreationTaskWithPrefill(prefill: Map<String, String>) {
+        conversationContext = conversationContext.copy(
+            activeTask = ActiveTask.ProductCreation(
+                name = prefill["name"],
+                category = prefill["category"],
+                brand = prefill["brand"],
+                model = prefill["model"],
+                location = prefill["location"],
+                barcode = prefill["barcode"],
+                notes = prefill["notes"]
+            )
+        )
+        Log.d(TAG, "Started ProductCreation task with prefill: $prefill")
     }
 
     /**
