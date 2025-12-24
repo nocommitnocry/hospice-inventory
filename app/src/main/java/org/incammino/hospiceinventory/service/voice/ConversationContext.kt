@@ -116,13 +116,33 @@ sealed class ActiveTask {
 
     /**
      * Creazione di un nuovo prodotto nell'inventario.
+     *
+     * I campi *Id contengono ID risolti (pronti per il salvataggio).
+     * I campi *Name contengono nomi non ancora risolti (da passare a EntityResolver).
      */
     data class ProductCreation(
         val name: String? = null,
         val category: String? = null,
         val brand: String? = null,
         val model: String? = null,
+
+        // Ubicazione - può essere stringa libera o riferimento
         val location: String? = null,
+        val locationId: String? = null,
+        val locationName: String? = null,  // Nome non risolto
+
+        // Manutentore garanzia
+        val warrantyMaintainerId: String? = null,
+        val warrantyMaintainerName: String? = null,  // Nome non risolto
+
+        // Manutentore service (post-garanzia)
+        val serviceMaintainerId: String? = null,
+        val serviceMaintainerName: String? = null,  // Nome non risolto
+
+        // Assegnatario
+        val assigneeId: String? = null,
+        val assigneeName: String? = null,  // Nome non risolto
+
         val purchaseDate: LocalDate? = null,
         val warrantyMonths: Int? = null,
         val barcode: String? = null,
@@ -134,7 +154,7 @@ sealed class ActiveTask {
             get() = buildList {
                 if (name == null) add("nome")
                 if (category == null) add("categoria")
-                if (location == null) add("ubicazione")
+                if (location == null && locationId == null && locationName == null) add("ubicazione")
             }
 
         /** Campi opzionali ancora non compilati */
@@ -147,13 +167,40 @@ sealed class ActiveTask {
                 if (barcode == null) add("codice a barre")
             }
 
+        /** True se ci sono riferimenti testuali da risolvere */
+        val hasUnresolvedReferences: Boolean
+            get() = warrantyMaintainerName != null ||
+                serviceMaintainerName != null ||
+                assigneeName != null ||
+                locationName != null
+
         /** Descrizione dei dati già raccolti per il prompt */
         fun toCollectedDataString(): String = buildString {
             name?.let { appendLine("- Nome: $it") }
             category?.let { appendLine("- Categoria: $it") }
             brand?.let { appendLine("- Marca: $it") }
             model?.let { appendLine("- Modello: $it") }
-            location?.let { appendLine("- Ubicazione: $it") }
+            // Ubicazione: mostra il valore più specifico disponibile
+            when {
+                locationId != null -> appendLine("- Ubicazione: (ID: $locationId)")
+                locationName != null -> appendLine("- Ubicazione: $locationName (da verificare)")
+                location != null -> appendLine("- Ubicazione: $location")
+            }
+            // Manutentore garanzia
+            when {
+                warrantyMaintainerId != null -> appendLine("- Fornitore garanzia: (ID: $warrantyMaintainerId)")
+                warrantyMaintainerName != null -> appendLine("- Fornitore garanzia: $warrantyMaintainerName (da verificare)")
+            }
+            // Manutentore service
+            when {
+                serviceMaintainerId != null -> appendLine("- Manutentore service: (ID: $serviceMaintainerId)")
+                serviceMaintainerName != null -> appendLine("- Manutentore service: $serviceMaintainerName (da verificare)")
+            }
+            // Assegnatario
+            when {
+                assigneeId != null -> appendLine("- Assegnatario: (ID: $assigneeId)")
+                assigneeName != null -> appendLine("- Assegnatario: $assigneeName (da verificare)")
+            }
             purchaseDate?.let { appendLine("- Data acquisto: $it") }
             warrantyMonths?.let { appendLine("- Garanzia: $it mesi") }
             barcode?.let { appendLine("- Barcode: $it") }

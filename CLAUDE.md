@@ -401,6 +401,58 @@ sealed class ActiveTask {
 }
 ```
 
+### Entity Resolution ✅ (Implementato 24/12/2025)
+
+Quando l'utente riferisce entità per nome (es. "fornitore Medika"), il sistema risolve il nome in ID.
+
+**Stato implementazione:**
+- ✅ `EntityResolver` class con fuzzy match Levenshtein: `service/voice/EntityResolver.kt`
+- ✅ Query sincrone `getAllActiveSync()` in tutti i DAO e Repository
+- ✅ Campi `*Name` e `*Id` in `ActiveTask.ProductCreation`
+- ✅ Integrazione in `GeminiService.completeActiveTask()` con `resolveEntityReferences()`
+
+**Architettura implementata:**
+
+```kotlin
+// EntityResolver.kt - service/voice/
+sealed class Resolution<T> {
+    data class Found<T>(val entity: T) : Resolution<T>()
+    data class Ambiguous<T>(val candidates: List<T>, val query: String) : Resolution<T>()
+    data class NotFound<T>(val query: String) : Resolution<T>()
+    data class NeedsConfirmation<T>(val candidate: T, val similarity: Float, val query: String) : Resolution<T>()
+}
+
+class EntityResolver @Inject constructor(...) {
+    suspend fun resolveMaintainer(name: String): Resolution<Maintainer>
+    suspend fun resolveLocation(name: String): Resolution<Location>
+    suspend fun resolveAssignee(name: String): Resolution<Assignee>
+}
+```
+
+**Flusso risoluzione:**
+```
+Utente: "fornitore Medika"
+    ↓
+EntityResolver.resolveMaintainer("Medika")
+    ↓
+Found(id="maint-123") → usa ID nel prodotto
+Ambiguous([...]) → "Quale intendi: Medika Srl, Medika Service?"
+NeedsConfirmation → "Intendi Medika Healthcare?"
+NotFound → "Medika non esiste. Vuoi crearlo?" (TODO: creazione inline)
+```
+
+**Campi in ActiveTask.ProductCreation:**
+```kotlin
+// Campi *Id per ID risolti (pronti per salvataggio)
+// Campi *Name per nomi non ancora risolti
+val warrantyMaintainerId: String?, val warrantyMaintainerName: String?,
+val serviceMaintainerId: String?, val serviceMaintainerName: String?,
+val locationId: String?, val locationName: String?,
+val assigneeId: String?, val assigneeName: String?
+```
+
+**TODO:** Creazione inline entità mancanti quando NotFound.
+
 ### Inferenza Speaker
 
 L'app inferisce chi sta parlando dai pattern linguistici:
@@ -640,10 +692,12 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 #### Repository Layer
 - [x] **ProductRepository** - CRUD prodotti + query scadenze
-- [x] **MaintainerRepository** - CRUD manutentori
+- [x] **MaintainerRepository** - CRUD manutentori + `getAllActiveSync()` (24/12/2025)
 - [x] **MaintenanceRepository** - CRUD manutenzioni
-- [x] **LocationRepository** - CRUD ubicazioni
-- [x] **AssigneeRepository** - CRUD assegnatari (aggiunto 23/12/2025)
+- [x] **LocationRepository** - CRUD ubicazioni + `getAllActiveSync()` (24/12/2025)
+- [x] **AssigneeRepository** - CRUD assegnatari + `getAllActiveSync()` (24/12/2025)
+- [x] **EntityResolver** - Risoluzione nomi → ID con fuzzy match Levenshtein (24/12/2025)
+- [x] Query sincrone `*Sync()` nei repository e DAO (24/12/2025)
 
 #### Servizi Vocali
 - [x] **VoiceService** - Speech-to-Text (Google Speech Recognition)
@@ -671,6 +725,16 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - [x] **SampleDataPopulator** - Dati di test per sviluppo
 
 ### 🔲 Da Fare
+
+#### Entity Resolution ✅ (Implementato 24/12/2025)
+- [x] **EntityResolver** class - Risoluzione nomi → ID con fuzzy match Levenshtein
+- [x] Query sincrone `getAllActiveSync()` in MaintainerRepository
+- [x] Query sincrone `getAllActiveSync()` in LocationRepository
+- [x] Query sincrone `getAllActiveSync()` in AssigneeRepository
+- [x] Campi `*Name` in ActiveTask.ProductCreation per riferimenti non risolti
+- [x] Integrazione EntityResolver in `GeminiService.completeActiveTask()`
+- [x] Risoluzione automatica con disambiguazione utente (Ambiguous, NeedsConfirmation)
+- [ ] Creazione inline entità mancanti (NotFound → offri creazione) - TODO
 
 #### Import/Export
 - [ ] **Excel Import** - Parser per dati iniziali (Inventario.xlsx)
@@ -752,25 +816,24 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 ### Sessione 23/12/2025 - Voice Flow Entity Creation
 
-**P9 - ProductEditViewModel isNew errato** (CRITICO - RISOLTO)
+**P9 - ProductEditViewModel isNew errato** (CRITICO - PARZIALE)
 - Problema: Route `product/edit/new` → `savedStateHandle["productId"]` restituisce `"new"` (stringa), non `null`
 - Effetto: `isNew = productId == null` → `false` ❌ (modalità MODIFICA invece di CREAZIONE)
-- Fix: Logica corretta per gestire `"new"` come nuovo prodotto:
-  ```kotlin
-  val rawProductId: String? = savedStateHandle["productId"]
-  val isNewProduct = rawProductId == null || rawProductId == "new"
-  val productId: String? = if (isNewProduct) null else rawProductId
-  ```
+- Fix parziale: Logica corretta per gestire `"new"` come nuovo prodotto
+- ✅ Riconoscimento route "new" → modalità creazione
+- ❌ Prefill data da voice flow non implementato (i dati raccolti vocalmente NON vengono passati alla UI)
+- ❌ Salvataggio diretto da voice non implementato
 - File: `ProductEditViewModel.kt` (linee 71-74)
 
-**P10 - Azioni creazione entità mancanti** (ALTO - RISOLTO)
+**P10 - Azioni creazione entità mancanti** (ALTO - RISOLTO 24/12/2025)
 - Problema: Mancavano action tags per avviare creazione manutentori, ubicazioni, assegnatari
-- Fix: Aggiunti al system prompt e parsing:
-  - `START_MAINTAINER_CREATION` - Nuovo manutentore/fornitore
-  - `START_LOCATION_CREATION` - Nuova ubicazione
-  - `START_ASSIGNEE_CREATION` - Nuovo assegnatario
-- Nuovi metodi: `startMaintainerCreationTask()`, `startLocationCreationTask()`, `startAssigneeCreationTask()`
-- File: `GeminiService.kt`
+- ✅ Action tags aggiunti al system prompt:
+  - `START_MAINTAINER_CREATION`, `START_LOCATION_CREATION`, `START_ASSIGNEE_CREATION`
+- ✅ Parsing ACTION in `parseResponse()`
+- ✅ Metodi: `startMaintainerCreationTask()`, `startLocationCreationTask()`, `startAssigneeCreationTask()`
+- ✅ `completeActiveTask()` genera `AssistantAction.Save*` per salvataggio
+- ✅ EntityResolver implementato per risolvere nomi → ID
+- File: `GeminiService.kt`, `EntityResolver.kt`
 
 **P11 - CREATE generico confondeva Gemini** (MEDIO - RISOLTO)
 - Problema: `CREATE:campo=valore` veniva usato per qualsiasi entità, non solo prodotti
@@ -781,13 +844,50 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
   - Nota esplicita: "Non usare CREATE generico"
 - File: `GeminiService.kt`
 
-**P12 - Voice-first flow (Opzione 3)** (ENHANCEMENT)
+**P12 - Voice-first flow + Entity Resolution** (ENHANCEMENT - IMPLEMENTATO 24/12/2025)
 - Scelta architetturale: Salvataggio diretto da voice, UI opzionale per dettagli
-- Messaggi di risposta migliorati con conferma dati salvati:
-  - Manutentore: "X registrato (email: y, tel: z). Posso aggiungere altri dettagli se vuoi."
-  - Ubicazione: "X (sotto Y) registrata."
-  - Assegnatario: "X del reparto Y registrato."
-- File: `GeminiService.kt` (completeActiveTask)
+- ✅ EntityResolver implementato con fuzzy match Levenshtein
+- ✅ Campi `*Name` e `*Id` in ActiveTask.ProductCreation
+- ✅ `resolveEntityReferences()` in GeminiService
+- ✅ Disambiguazione automatica (Ambiguous, NeedsConfirmation)
+- ⏳ TODO: Creazione inline entità mancanti (NotFound → offri creazione)
+- File: `GeminiService.kt`, `EntityResolver.kt`, `ConversationContext.kt`
+
+### Sessione 24/12/2025 - Entity Resolution Implementation
+
+**P13 - Entity Resolution** (CRITICO - IMPLEMENTATO)
+- Problema: Utente dice "fornitore Medika" ma il DB richiede UUID, non stringa
+- Soluzione: EntityResolver con fuzzy match Levenshtein
+
+**File creati/modificati:**
+```
+NUOVO: service/voice/EntityResolver.kt
+  - Resolution<T>: Found, Ambiguous, NotFound, NeedsConfirmation
+  - resolveMaintainer(), resolveLocation(), resolveAssignee()
+  - Levenshtein distance per fuzzy match (similarity >= 0.6)
+
+MODIFICATI:
+  - SupportDaos.kt: +getAllActiveSync() per Maintainer, Location, Assignee
+  - MaintainerRepository.kt: +getAllActiveSync()
+  - LocationRepository.kt: +getAllActiveSync()
+  - AssigneeRepository.kt: +getAllActiveSync()
+  - ConversationContext.kt: +campi *Id/*Name in ProductCreation
+  - GeminiService.kt: +entityResolver injection, +resolveEntityReferences()
+```
+
+**Flusso implementato:**
+```
+completeActiveTask()
+    ↓
+resolveEntityReferences(task)
+    ↓
+  Found → usa ID, procedi
+  Ambiguous → "Quale intendi: X, Y, Z?"
+  NeedsConfirmation → "Intendi X?" (similarity 60-80%)
+  NotFound → "X non esiste. Vuoi crearlo?" (TODO: inline creation)
+```
+
+**Test:** Build passata, da testare su device.
 
 ---
 

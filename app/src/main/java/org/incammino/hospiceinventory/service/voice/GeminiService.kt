@@ -411,7 +411,8 @@ class GeminiService @Inject constructor(
     private val maintainerRepository: MaintainerRepository,
     private val maintenanceRepository: MaintenanceRepository,
     private val locationRepository: LocationRepository,
-    private val assigneeRepository: AssigneeRepository
+    private val assigneeRepository: AssigneeRepository,
+    private val entityResolver: EntityResolver
 ) {
     private var conversationContext = ConversationContext()
     private val rateLimiter = RateLimiter(maxRequests = 15, windowDuration = 1.minutes)
@@ -590,23 +591,39 @@ class GeminiService @Inject constructor(
     /**
      * Completa il task attivo e restituisce l'azione appropriata.
      * BUGFIX: Ora salva effettivamente i dati tramite AssistantAction.Save*
+     * BUGFIX: Ora risolve i riferimenti testuali (nomi) in ID prima del salvataggio.
      */
-    private fun completeActiveTask(): GeminiResult {
+    private suspend fun completeActiveTask(): GeminiResult {
         val task = conversationContext.activeTask ?: return GeminiResult.Success("Nessun task attivo.")
 
-        return when (task) {
+        // Risolvi riferimenti testuali (nomi manutentori, ubicazioni, assegnatari) in ID
+        val (resolvedTask, resolutionMessage) = resolveEntityReferences(task)
+
+        if (resolvedTask == null) {
+            // Serve input utente per disambiguare - non cancelliamo il task
+            Log.d(TAG, "Entity resolution requires user input: $resolutionMessage")
+            return addAssistantExchangeAndReturn(
+                GeminiResult.Success(resolutionMessage)
+            )
+        }
+
+        return when (resolvedTask) {
             is ActiveTask.ProductCreation -> {
                 // Prodotto: apre UI con prefill (troppi campi per salvataggio vocale diretto)
                 val prefillData = buildMap {
-                    task.name?.let { put("name", it) }
-                    task.category?.let { put("category", it) }
-                    task.brand?.let { put("brand", it) }
-                    task.model?.let { put("model", it) }
-                    task.location?.let { put("location", it) }
-                    task.purchaseDate?.let { put("purchaseDate", it.toString()) }
-                    task.warrantyMonths?.let { put("warrantyMonths", it.toString()) }
-                    task.barcode?.let { put("barcode", it) }
-                    task.notes?.let { put("notes", it) }
+                    resolvedTask.name?.let { put("name", it) }
+                    resolvedTask.category?.let { put("category", it) }
+                    resolvedTask.brand?.let { put("brand", it) }
+                    resolvedTask.model?.let { put("model", it) }
+                    resolvedTask.location?.let { put("location", it) }
+                    resolvedTask.locationId?.let { put("locationId", it) }
+                    resolvedTask.warrantyMaintainerId?.let { put("warrantyMaintainerId", it) }
+                    resolvedTask.serviceMaintainerId?.let { put("serviceMaintainerId", it) }
+                    resolvedTask.assigneeId?.let { put("assigneeId", it) }
+                    resolvedTask.purchaseDate?.let { put("purchaseDate", it.toString()) }
+                    resolvedTask.warrantyMonths?.let { put("warrantyMonths", it.toString()) }
+                    resolvedTask.barcode?.let { put("barcode", it) }
+                    resolvedTask.notes?.let { put("notes", it) }
                 }
                 conversationContext = conversationContext.copy(activeTask = null)
                 addAssistantExchangeAndReturn(
@@ -622,18 +639,18 @@ class GeminiService @Inject constructor(
                 val now = Clock.System.now()
                 val maintenance = Maintenance(
                     id = "",  // Generato dal repository
-                    productId = task.productId,
+                    productId = resolvedTask.productId,
                     maintainerId = null,  // Da inferire se possibile
-                    date = task.date?.let {
+                    date = resolvedTask.date?.let {
                         kotlinx.datetime.LocalDateTime(it.year, it.monthNumber, it.dayOfMonth, 12, 0, 0)
                             .toInstant(TimeZone.currentSystemDefault())
                     } ?: now,
-                    type = task.type ?: MaintenanceType.RIPARAZIONE,
+                    type = resolvedTask.type ?: MaintenanceType.RIPARAZIONE,
                     outcome = null,
-                    notes = task.description,
-                    cost = task.cost,
+                    notes = resolvedTask.description,
+                    cost = resolvedTask.cost,
                     invoiceNumber = null,
-                    isWarrantyWork = task.isWarrantyWork ?: false,
+                    isWarrantyWork = resolvedTask.isWarrantyWork ?: false,
                     requestEmailSent = false,
                     reportEmailSent = false
                 )
@@ -641,7 +658,7 @@ class GeminiService @Inject constructor(
                 addAssistantExchangeAndReturn(
                     GeminiResult.ActionRequired(
                         AssistantAction.SaveMaintenance(maintenance),
-                        "Manutenzione registrata per ${task.productName}!"
+                        "Manutenzione registrata per ${resolvedTask.productName}!"
                     )
                 )
             }
@@ -650,17 +667,17 @@ class GeminiService @Inject constructor(
                 // Manutentore: salva direttamente
                 val maintainer = Maintainer(
                     id = "",  // Generato dal repository
-                    name = task.name ?: task.company ?: "Manutentore senza nome",
-                    email = task.email,
-                    phone = task.phone,
-                    address = task.address,
-                    city = task.city,
+                    name = resolvedTask.name ?: resolvedTask.company ?: "Manutentore senza nome",
+                    email = resolvedTask.email,
+                    phone = resolvedTask.phone,
+                    address = resolvedTask.address,
+                    city = resolvedTask.city,
                     postalCode = null,
                     province = null,
                     vatNumber = null,
                     contactPerson = null,
-                    specialization = task.specializations?.firstOrNull(),
-                    isSupplier = task.isSupplier ?: false,
+                    specialization = resolvedTask.specializations?.firstOrNull(),
+                    isSupplier = resolvedTask.isSupplier ?: false,
                     notes = null,
                     isActive = true
                 )
@@ -685,16 +702,16 @@ class GeminiService @Inject constructor(
                 // Ubicazione: salva direttamente
                 val location = Location(
                     id = "",  // Generato dal repository
-                    name = task.name ?: "Ubicazione senza nome",
-                    parentId = task.parentId,
-                    address = task.address,
+                    name = resolvedTask.name ?: "Ubicazione senza nome",
+                    parentId = resolvedTask.parentId,
+                    address = resolvedTask.address,
                     coordinates = null,
-                    notes = task.notes,
+                    notes = resolvedTask.notes,
                     isActive = true
                 )
                 conversationContext = conversationContext.copy(activeTask = null)
 
-                val parentInfo = task.parentName?.let { " (sotto $it)" } ?: ""
+                val parentInfo = resolvedTask.parentName?.let { " (sotto $it)" } ?: ""
 
                 addAssistantExchangeAndReturn(
                     GeminiResult.ActionRequired(
@@ -708,15 +725,15 @@ class GeminiService @Inject constructor(
                 // Assegnatario: salva direttamente
                 val assignee = Assignee(
                     id = "",  // Generato dal repository
-                    name = task.name ?: "Assegnatario senza nome",
-                    department = task.department,
-                    phone = task.phone,
-                    email = task.email,
+                    name = resolvedTask.name ?: "Assegnatario senza nome",
+                    department = resolvedTask.department,
+                    phone = resolvedTask.phone,
+                    email = resolvedTask.email,
                     isActive = true
                 )
                 conversationContext = conversationContext.copy(activeTask = null)
 
-                val deptInfo = task.department?.let { " del reparto $it" } ?: ""
+                val deptInfo = resolvedTask.department?.let { " del reparto $it" } ?: ""
 
                 addAssistantExchangeAndReturn(
                     GeminiResult.ActionRequired(
@@ -726,6 +743,175 @@ class GeminiService @Inject constructor(
                 )
             }
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // ENTITY RESOLUTION - Risoluzione riferimenti testuali prima del salvataggio
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Risolve i riferimenti testuali in un ActiveTask prima del salvataggio.
+     *
+     * @return Pair di:
+     *   - Task aggiornato con ID risolti (o null se serve input utente)
+     *   - Messaggio per l'utente (vuoto se tutto risolto, altrimenti richiesta disambiguazione)
+     */
+    private suspend fun resolveEntityReferences(
+        task: ActiveTask
+    ): Pair<ActiveTask?, String> {
+        return when (task) {
+            is ActiveTask.ProductCreation -> resolveProductCreationRefs(task)
+            is ActiveTask.MaintenanceRegistration -> task to "" // Nessun riferimento da risolvere per ora
+            is ActiveTask.MaintainerCreation -> task to "" // Nessun riferimento da risolvere
+            is ActiveTask.LocationCreation -> resolveLocationCreationRefs(task)
+            is ActiveTask.AssigneeCreation -> task to "" // Nessun riferimento da risolvere
+        }
+    }
+
+    /**
+     * Risolve i riferimenti testuali per ProductCreation.
+     */
+    private suspend fun resolveProductCreationRefs(
+        task: ActiveTask.ProductCreation
+    ): Pair<ActiveTask.ProductCreation?, String> {
+        var updatedTask = task
+
+        // Risolvi warrantyMaintainer se è un nome (non un UUID)
+        task.warrantyMaintainerName?.let { name ->
+            when (val resolution = entityResolver.resolveMaintainer(name)) {
+                is EntityResolver.Resolution.Found -> {
+                    updatedTask = updatedTask.copy(
+                        warrantyMaintainerId = resolution.entity.id,
+                        warrantyMaintainerName = null // Risolto
+                    )
+                    Log.d(TAG, "Resolved warrantyMaintainer '$name' -> ${resolution.entity.id}")
+                }
+                is EntityResolver.Resolution.Ambiguous -> {
+                    val options = resolution.candidates.joinToString(", ") { it.name }
+                    return null to "Ho trovato più manutentori simili a \"$name\": $options. Quale intendi?"
+                }
+                is EntityResolver.Resolution.NotFound -> {
+                    return null to "Non ho trovato \"$name\" tra i manutentori. Vuoi che lo aggiunga come nuovo fornitore?"
+                }
+                is EntityResolver.Resolution.NeedsConfirmation -> {
+                    return null to "Intendi \"${resolution.candidate.name}\"?"
+                }
+            }
+        }
+
+        // Risolvi serviceMaintainer
+        task.serviceMaintainerName?.let { name ->
+            when (val resolution = entityResolver.resolveMaintainer(name)) {
+                is EntityResolver.Resolution.Found -> {
+                    updatedTask = updatedTask.copy(
+                        serviceMaintainerId = resolution.entity.id,
+                        serviceMaintainerName = null
+                    )
+                    Log.d(TAG, "Resolved serviceMaintainer '$name' -> ${resolution.entity.id}")
+                }
+                is EntityResolver.Resolution.Ambiguous -> {
+                    val options = resolution.candidates.joinToString(", ") { it.name }
+                    return null to "Quale manutentore service intendi tra: $options?"
+                }
+                is EntityResolver.Resolution.NotFound -> {
+                    return null to "\"$name\" non è tra i manutentori registrati. Lo creo?"
+                }
+                is EntityResolver.Resolution.NeedsConfirmation -> {
+                    return null to "Per il service intendi \"${resolution.candidate.name}\"?"
+                }
+            }
+        }
+
+        // Risolvi location
+        task.locationName?.let { name ->
+            when (val resolution = entityResolver.resolveLocation(name)) {
+                is EntityResolver.Resolution.Found -> {
+                    updatedTask = updatedTask.copy(
+                        location = resolution.entity.name, // Usiamo il nome normalizzato
+                        locationId = resolution.entity.id,
+                        locationName = null
+                    )
+                    Log.d(TAG, "Resolved location '$name' -> ${resolution.entity.id}")
+                }
+                is EntityResolver.Resolution.Ambiguous -> {
+                    val options = resolution.candidates.joinToString(", ") { it.name }
+                    return null to "Quale ubicazione: $options?"
+                }
+                is EntityResolver.Resolution.NotFound -> {
+                    // Per ubicazione: permetti nome libero se non esiste
+                    updatedTask = updatedTask.copy(
+                        location = name, // Usa il nome come stringa libera
+                        locationName = null
+                    )
+                    Log.d(TAG, "Location '$name' not found, using as free text")
+                }
+                is EntityResolver.Resolution.NeedsConfirmation -> {
+                    return null to "Intendi l'ubicazione \"${resolution.candidate.name}\"?"
+                }
+            }
+        }
+
+        // Risolvi assignee
+        task.assigneeName?.let { name ->
+            when (val resolution = entityResolver.resolveAssignee(name)) {
+                is EntityResolver.Resolution.Found -> {
+                    updatedTask = updatedTask.copy(
+                        assigneeId = resolution.entity.id,
+                        assigneeName = null
+                    )
+                    Log.d(TAG, "Resolved assignee '$name' -> ${resolution.entity.id}")
+                }
+                is EntityResolver.Resolution.Ambiguous -> {
+                    val options = resolution.candidates.joinToString(", ") { it.name }
+                    return null to "Quale assegnatario: $options?"
+                }
+                is EntityResolver.Resolution.NotFound -> {
+                    return null to "\"$name\" non è tra gli assegnatari. Lo creo?"
+                }
+                is EntityResolver.Resolution.NeedsConfirmation -> {
+                    return null to "Intendi l'assegnatario \"${resolution.candidate.name}\"?"
+                }
+            }
+        }
+
+        return updatedTask to ""
+    }
+
+    /**
+     * Risolve i riferimenti testuali per LocationCreation (parent location).
+     */
+    private suspend fun resolveLocationCreationRefs(
+        task: ActiveTask.LocationCreation
+    ): Pair<ActiveTask.LocationCreation?, String> {
+        var updatedTask = task
+
+        // Risolvi parent location se specificato per nome
+        task.parentName?.let { name ->
+            if (task.parentId == null) {
+                when (val resolution = entityResolver.resolveLocation(name)) {
+                    is EntityResolver.Resolution.Found -> {
+                        updatedTask = updatedTask.copy(
+                            parentId = resolution.entity.id,
+                            parentName = resolution.entity.name // Mantieni per visualizzazione
+                        )
+                        Log.d(TAG, "Resolved parent location '$name' -> ${resolution.entity.id}")
+                    }
+                    is EntityResolver.Resolution.Ambiguous -> {
+                        val options = resolution.candidates.joinToString(", ") { it.name }
+                        return null to "Quale sede padre intendi: $options?"
+                    }
+                    is EntityResolver.Resolution.NotFound -> {
+                        // Parent non trovato - chiedi se vuole crearla prima
+                        return null to "La sede \"$name\" non esiste. Vuoi crearla prima?"
+                    }
+                    is EntityResolver.Resolution.NeedsConfirmation -> {
+                        return null to "Come sede padre intendi \"${resolution.candidate.name}\"?"
+                    }
+                }
+            }
+        }
+
+        return updatedTask to ""
     }
 
     /**

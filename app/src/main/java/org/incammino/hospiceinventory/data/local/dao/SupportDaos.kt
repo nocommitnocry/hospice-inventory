@@ -17,7 +17,13 @@ interface MaintainerDao {
     
     @Query("SELECT * FROM maintainers WHERE isActive = 1 ORDER BY name ASC")
     fun getAllActive(): Flow<List<MaintainerEntity>>
-    
+
+    /**
+     * Tutti i manutentori attivi (sincrono, per EntityResolver).
+     */
+    @Query("SELECT * FROM maintainers WHERE isActive = 1 ORDER BY name ASC")
+    suspend fun getAllActiveSync(): List<MaintainerEntity>
+
     @Query("SELECT * FROM maintainers ORDER BY name ASC")
     fun getAll(): Flow<List<MaintainerEntity>>
     
@@ -145,6 +151,12 @@ interface LocationDao {
     @Query("SELECT * FROM locations WHERE isActive = 1 ORDER BY name ASC")
     fun getAllActive(): Flow<List<LocationEntity>>
 
+    /**
+     * Tutte le ubicazioni attive (sincrono, per EntityResolver).
+     */
+    @Query("SELECT * FROM locations WHERE isActive = 1 ORDER BY name ASC")
+    suspend fun getAllActiveSync(): List<LocationEntity>
+
     @Query("SELECT * FROM locations ORDER BY name ASC")
     fun getAll(): Flow<List<LocationEntity>>
 
@@ -199,7 +211,13 @@ interface AssigneeDao {
     
     @Query("SELECT * FROM assignees WHERE isActive = 1 ORDER BY name ASC")
     fun getAllActive(): Flow<List<AssigneeEntity>>
-    
+
+    /**
+     * Tutti gli assegnatari attivi (sincrono, per EntityResolver).
+     */
+    @Query("SELECT * FROM assignees WHERE isActive = 1 ORDER BY name ASC")
+    suspend fun getAllActiveSync(): List<AssigneeEntity>
+
     @Query("SELECT * FROM assignees WHERE id = :id")
     suspend fun getById(id: String): AssigneeEntity?
     

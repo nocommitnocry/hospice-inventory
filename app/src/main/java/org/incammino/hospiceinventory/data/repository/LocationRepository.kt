@@ -31,6 +31,12 @@ class LocationRepository @Inject constructor(
         }
 
     /**
+     * Tutte le ubicazioni attive (sincrono, per EntityResolver).
+     */
+    suspend fun getAllActiveSync(): List<Location> =
+        locationDao.getAllActiveSync().map { it.toDomain() }
+
+    /**
      * Tutte le ubicazioni (incluse inattive).
      */
     fun getAll(): Flow<List<Location>> =

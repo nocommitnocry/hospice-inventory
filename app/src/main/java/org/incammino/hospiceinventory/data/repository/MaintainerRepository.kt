@@ -31,6 +31,12 @@ class MaintainerRepository @Inject constructor(
         }
 
     /**
+     * Tutti i manutentori attivi (sincrono, per EntityResolver).
+     */
+    suspend fun getAllActiveSync(): List<Maintainer> =
+        maintainerDao.getAllActiveSync().map { it.toDomain() }
+
+    /**
      * Tutti i manutentori (inclusi inattivi).
      */
     fun getAll(): Flow<List<Maintainer>> =

@@ -31,6 +31,12 @@ class AssigneeRepository @Inject constructor(
         }
 
     /**
+     * Tutti gli assegnatari attivi (sincrono, per EntityResolver).
+     */
+    suspend fun getAllActiveSync(): List<Assignee> =
+        assigneeDao.getAllActiveSync().map { it.toDomain() }
+
+    /**
      * Assegnatario per ID (one-shot).
      */
     suspend fun getById(id: String): Assignee? =
