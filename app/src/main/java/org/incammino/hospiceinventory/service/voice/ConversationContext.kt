@@ -431,8 +431,19 @@ object UserIntentDetector {
     fun detect(input: String): UserIntent {
         val normalized = input.lowercase().trim()
 
+        // Estrai le parole per il matching esatto di frasi corte
+        val words = normalized.split(Regex("[\\s,.!?;:]+")).filter { it.isNotEmpty() }
+
         // Controlla prima le frasi di cancellazione (hanno priorità)
-        if (CANCEL_PHRASES.any { normalized.contains(it) }) {
+        // Per frasi corte (≤3 caratteri come "no"), richiedi match esatto su parola
+        // Per frasi lunghe, usa contains() per matching parziale
+        val isCancelIntent = CANCEL_PHRASES.any { phrase ->
+            when {
+                phrase.length <= 3 -> words.contains(phrase)  // "no" deve essere parola isolata
+                else -> normalized.contains(phrase)
+            }
+        }
+        if (isCancelIntent) {
             return UserIntent.CANCEL
         }
 

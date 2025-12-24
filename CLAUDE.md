@@ -889,6 +889,22 @@ resolveEntityReferences(task)
 
 **Test:** Build passata, da testare su device.
 
+**P14 - UserIntentDetector false positive "no"** (CRITICO - RISOLTO 24/12/2025)
+- Problema: "no" in CANCEL_PHRASES matchava con `contains()`, causando falsi annullamenti
+- Esempio: "telefono 02 946..." contiene "no" → CANCEL (errato!)
+- Anche: "nome", "nove", "noi", "conoscere" → falsi positivi
+- Fix: Per frasi corte (≤3 caratteri), richiedi match esatto su parola isolata
+```kotlin
+val words = normalized.split(Regex("[\\s,.!?;:]+")).filter { it.isNotEmpty() }
+val isCancelIntent = CANCEL_PHRASES.any { phrase ->
+    when {
+        phrase.length <= 3 -> words.contains(phrase)  // "no" deve essere parola isolata
+        else -> normalized.contains(phrase)
+    }
+}
+```
+- File: `ConversationContext.kt` (UserIntentDetector.detect)
+
 ---
 
 ## 🔗 Risorse
