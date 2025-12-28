@@ -1819,4 +1819,226 @@ class GeminiService @Inject constructor(
             }
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // VOICE DUMP EXTRACTION (v2.0 - 26/12/2025)
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Estrae dati strutturati da un transcript vocale di manutenzione.
+     * Una singola chiamata API, nessuna conversazione multi-step.
+     *
+     * Paradigma "Voice Dump + Visual Confirm":
+     * - L'utente detta tutto in una volta
+     * - Gemini estrae i dati in formato JSON
+     * - La UI mostra una scheda precompilata per verifica
+     *
+     * @param transcript Il testo trascritto dal voice input
+     * @return Result con MaintenanceExtraction o errore
+     */
+    suspend fun extractMaintenanceData(transcript: String): Result<MaintenanceExtraction> {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Rate limiting
+                if (!rateLimiter.tryAcquire()) {
+                    AuditLogger.log(AuditLogger.EventType.RATE_LIMITED, "Extraction request blocked")
+                    return@withContext Result.failure(
+                        Exception("Troppe richieste. Attendi un momento prima di riprovare.")
+                    )
+                }
+
+                // Sanitizzazione input
+                val sanitizeResult = InputSanitizer.sanitize(transcript)
+                val sanitizedTranscript = when (sanitizeResult) {
+                    is InputSanitizer.SanitizeResult.Clean -> sanitizeResult.sanitizedInput
+                    is InputSanitizer.SanitizeResult.Suspicious -> {
+                        AuditLogger.log(
+                            AuditLogger.EventType.SUSPICIOUS_INPUT,
+                            "Suspicious input in extraction: ${sanitizeResult.reason}"
+                        )
+                        sanitizeResult.sanitizedInput
+                    }
+                    is InputSanitizer.SanitizeResult.Rejected -> {
+                        return@withContext Result.failure(
+                            Exception("Input non valido: ${sanitizeResult.reason}")
+                        )
+                    }
+                }
+
+                // Genera prompt e chiama Gemini
+                val prompt = ExtractionPrompts.maintenanceExtractionPrompt(sanitizedTranscript)
+
+                AuditLogger.log(
+                    AuditLogger.EventType.REQUEST,
+                    "Maintenance extraction",
+                    mapOf("transcript_length" to sanitizedTranscript.length)
+                )
+
+                val response = generativeModel.generateContent(
+                    content { text(prompt) }
+                )
+
+                val responseText = response.text?.trim() ?: ""
+
+                if (responseText.isBlank()) {
+                    return@withContext Result.failure(
+                        Exception("Risposta vuota da Gemini")
+                    )
+                }
+
+                // Rimuovi eventuali markdown code blocks
+                val jsonText = responseText
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+
+                // Parsa JSON
+                val extraction = try {
+                    kotlinx.serialization.json.Json {
+                        ignoreUnknownKeys = true
+                        isLenient = true
+                    }.decodeFromString<MaintenanceExtraction>(jsonText)
+                } catch (e: Exception) {
+                    Log.e(TAG, "JSON parsing failed: $jsonText", e)
+                    return@withContext Result.failure(
+                        Exception("Errore nel parsing della risposta: ${e.message}")
+                    )
+                }
+
+                AuditLogger.log(
+                    AuditLogger.EventType.RESPONSE,
+                    "Maintenance extraction completed",
+                    mapOf(
+                        "confidence" to extraction.confidence.overall,
+                        "missing_fields" to extraction.confidence.missingFields.size
+                    )
+                )
+
+                Result.success(extraction)
+
+            } catch (e: ResponseStoppedException) {
+                Log.e(TAG, "Gemini response stopped", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Response stopped: ${e.message}")
+                Result.failure(Exception("Risposta interrotta. Riprova."))
+            } catch (e: SerializationException) {
+                Log.e(TAG, "Serialization error", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Serialization error: ${e.message}")
+                Result.failure(Exception("Errore di serializzazione: ${e.message}"))
+            } catch (e: Exception) {
+                Log.e(TAG, "Extraction failed", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Extraction failed: ${e.message}")
+                Result.failure(Exception("Errore durante l'estrazione: ${e.message}"))
+            }
+        }
+    }
+
+    /**
+     * Estrae dati strutturati da un transcript vocale di nuovo prodotto.
+     * Una singola chiamata API, nessuna conversazione multi-step.
+     *
+     * Paradigma "Voice Dump + Visual Confirm":
+     * - L'utente detta tutto in una volta
+     * - Gemini estrae i dati in formato JSON
+     * - La UI mostra una scheda precompilata per verifica
+     *
+     * @param transcript Il testo trascritto dal voice input
+     * @return Result con ProductExtraction o errore
+     */
+    suspend fun extractProductData(transcript: String): Result<ProductExtraction> {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Rate limiting
+                if (!rateLimiter.tryAcquire()) {
+                    AuditLogger.log(AuditLogger.EventType.RATE_LIMITED, "Product extraction request blocked")
+                    return@withContext Result.failure(
+                        Exception("Troppe richieste. Attendi un momento prima di riprovare.")
+                    )
+                }
+
+                // Sanitizzazione input
+                val sanitizeResult = InputSanitizer.sanitize(transcript)
+                val sanitizedTranscript = when (sanitizeResult) {
+                    is InputSanitizer.SanitizeResult.Clean -> sanitizeResult.sanitizedInput
+                    is InputSanitizer.SanitizeResult.Suspicious -> {
+                        AuditLogger.log(
+                            AuditLogger.EventType.SUSPICIOUS_INPUT,
+                            "Suspicious input in product extraction: ${sanitizeResult.reason}"
+                        )
+                        sanitizeResult.sanitizedInput
+                    }
+                    is InputSanitizer.SanitizeResult.Rejected -> {
+                        return@withContext Result.failure(
+                            Exception("Input non valido: ${sanitizeResult.reason}")
+                        )
+                    }
+                }
+
+                // Genera prompt e chiama Gemini
+                val prompt = ExtractionPrompts.productExtractionPrompt(sanitizedTranscript)
+
+                AuditLogger.log(
+                    AuditLogger.EventType.REQUEST,
+                    "Product extraction",
+                    mapOf("transcript_length" to sanitizedTranscript.length)
+                )
+
+                val response = generativeModel.generateContent(
+                    content { text(prompt) }
+                )
+
+                val responseText = response.text?.trim() ?: ""
+
+                if (responseText.isBlank()) {
+                    return@withContext Result.failure(
+                        Exception("Risposta vuota da Gemini")
+                    )
+                }
+
+                // Rimuovi eventuali markdown code blocks
+                val jsonText = responseText
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+
+                // Parsa JSON
+                val extraction = try {
+                    kotlinx.serialization.json.Json {
+                        ignoreUnknownKeys = true
+                        isLenient = true
+                    }.decodeFromString<ProductExtraction>(jsonText)
+                } catch (e: Exception) {
+                    Log.e(TAG, "JSON parsing failed for product: $jsonText", e)
+                    return@withContext Result.failure(
+                        Exception("Errore nel parsing della risposta: ${e.message}")
+                    )
+                }
+
+                AuditLogger.log(
+                    AuditLogger.EventType.RESPONSE,
+                    "Product extraction completed",
+                    mapOf(
+                        "confidence" to extraction.confidence.overall,
+                        "missing_fields" to extraction.confidence.missingFields.size
+                    )
+                )
+
+                Result.success(extraction)
+
+            } catch (e: ResponseStoppedException) {
+                Log.e(TAG, "Gemini response stopped", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Response stopped: ${e.message}")
+                Result.failure(Exception("Risposta interrotta. Riprova."))
+            } catch (e: SerializationException) {
+                Log.e(TAG, "Serialization error", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Serialization error: ${e.message}")
+                Result.failure(Exception("Errore di serializzazione: ${e.message}"))
+            } catch (e: Exception) {
+                Log.e(TAG, "Product extraction failed", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Product extraction failed: ${e.message}")
+                Result.failure(Exception("Errore durante l'estrazione: ${e.message}"))
+            }
+        }
+    }
 }

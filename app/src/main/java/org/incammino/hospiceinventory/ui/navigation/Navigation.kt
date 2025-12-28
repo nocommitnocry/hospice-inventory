@@ -22,6 +22,12 @@ import org.incammino.hospiceinventory.ui.screens.location.LocationEditScreen
 import org.incammino.hospiceinventory.ui.screens.settings.SettingsScreen
 import org.incammino.hospiceinventory.ui.screens.settings.DataManagementScreen
 import org.incammino.hospiceinventory.ui.screens.scanner.ScannerScreen
+import org.incammino.hospiceinventory.ui.screens.voice.VoiceMaintenanceScreen
+import org.incammino.hospiceinventory.ui.screens.voice.MaintenanceConfirmScreen
+import org.incammino.hospiceinventory.ui.screens.voice.MaintenanceDataHolder
+import org.incammino.hospiceinventory.ui.screens.voice.VoiceProductScreen
+import org.incammino.hospiceinventory.ui.screens.voice.ProductConfirmScreen
+import org.incammino.hospiceinventory.ui.screens.voice.ProductDataHolder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -70,6 +76,12 @@ sealed class Screen(val route: String) {
     data object Scanner : Screen("scanner?reason={reason}") {
         fun createRoute(reason: String? = null) = "scanner?reason=${reason ?: ""}"
     }
+
+    // Voice Dump Flow (v2.0 - 26/12/2025)
+    data object VoiceMaintenance : Screen("voice/maintenance")
+    data object MaintenanceConfirm : Screen("maintenance/confirm")
+    data object VoiceProduct : Screen("voice/product")
+    data object ProductConfirm : Screen("product/confirm")
 }
 
 /**
@@ -118,6 +130,12 @@ fun HospiceNavHost(
                 },
                 onNavigateToNewLocation = { _ ->
                     navController.navigate(Screen.LocationEdit.createRoute(null))
+                },
+                onNavigateToVoiceMaintenance = {
+                    navController.navigate(Screen.VoiceMaintenance.route)
+                },
+                onNavigateToVoiceProduct = {
+                    navController.navigate(Screen.VoiceProduct.route)
                 }
             )
         }
@@ -329,6 +347,78 @@ fun HospiceNavHost(
                     navController.navigate(Screen.Search.createRoute(barcode))
                 }
             )
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // VOICE DUMP FLOW (v2.0 - 26/12/2025)
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        // Voice Maintenance - Input vocale
+        composable(Screen.VoiceMaintenance.route) {
+            VoiceMaintenanceScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToConfirm = { data ->
+                    // Salva data in holder condiviso
+                    MaintenanceDataHolder.set(data)
+                    navController.navigate(Screen.MaintenanceConfirm.route)
+                }
+            )
+        }
+
+        // Maintenance Confirm - Scheda di conferma
+        composable(Screen.MaintenanceConfirm.route) {
+            val data = MaintenanceDataHolder.consume()
+
+            if (data != null) {
+                MaintenanceConfirmScreen(
+                    initialData = data,
+                    onNavigateBack = { navController.popBackStack() },
+                    onSaved = {
+                        // Torna alla home dopo il salvataggio
+                        navController.popBackStack(Screen.Home.route, inclusive = false)
+                    },
+                    onNavigateToProductSearch = {
+                        navController.navigate(Screen.Search.createRoute(""))
+                    }
+                )
+            } else {
+                // Se non ci sono dati, torna indietro
+                navController.popBackStack()
+            }
+        }
+
+        // Voice Product - Input vocale (Fase 2)
+        composable(Screen.VoiceProduct.route) {
+            VoiceProductScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToConfirm = { data ->
+                    // Salva data in holder condiviso
+                    ProductDataHolder.set(data)
+                    navController.navigate(Screen.ProductConfirm.route)
+                }
+            )
+        }
+
+        // Product Confirm - Scheda di conferma (Fase 2)
+        composable(Screen.ProductConfirm.route) {
+            val data = ProductDataHolder.consume()
+
+            if (data != null) {
+                ProductConfirmScreen(
+                    initialData = data,
+                    onNavigateBack = { navController.popBackStack() },
+                    onSaved = {
+                        // Torna alla home dopo il salvataggio
+                        navController.popBackStack(Screen.Home.route, inclusive = false)
+                    },
+                    onNavigateToLocationSearch = {
+                        navController.navigate(Screen.LocationList.route)
+                    }
+                )
+            } else {
+                // Se non ci sono dati, torna indietro
+                navController.popBackStack()
+            }
         }
     }
 }

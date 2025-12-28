@@ -43,7 +43,9 @@ fun HomeScreen(
     onNavigateToLocations: () -> Unit = {},
     onNavigateToNewMaintenance: (String, Map<String, String>?) -> Unit = { _, _ -> },
     onNavigateToNewMaintainer: (Map<String, String>?) -> Unit = {},
-    onNavigateToNewLocation: (Map<String, String>?) -> Unit = {}
+    onNavigateToNewLocation: (Map<String, String>?) -> Unit = {},
+    onNavigateToVoiceMaintenance: () -> Unit = {},
+    onNavigateToVoiceProduct: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -138,6 +140,27 @@ fun HomeScreen(
             )
 
             Spacer(modifier = Modifier.weight(0.2f))
+
+            // Pulsanti Principali Voice Dump v2.0
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MainActionButton(
+                    icon = Icons.Filled.Build,
+                    label = "Manutenzione",
+                    onClick = onNavigateToVoiceMaintenance,
+                    modifier = Modifier.weight(1f)
+                )
+                MainActionButton(
+                    icon = Icons.Filled.AddBox,
+                    label = "Nuovo Prodotto",
+                    onClick = onNavigateToVoiceProduct,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Azioni Rapide
             QuickActionsGrid(
@@ -533,5 +556,37 @@ private fun StatusBar(
                 )
             }
         }
+    }
+}
+
+/**
+ * Pulsante azione principale (più grande e prominente).
+ * Usato per "Registra Manutenzione" e "Nuovo Prodotto" nel flusso Voice Dump v2.0.
+ */
+@Composable
+private fun MainActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(56.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary
+        )
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge
+        )
     }
 }
