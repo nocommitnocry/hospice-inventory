@@ -65,7 +65,10 @@ fun VoiceProductScreen(
     // Naviga automaticamente quando estrazione completata
     LaunchedEffect(state) {
         if (state is VoiceProductState.Extracted) {
-            onNavigateToConfirm((state as VoiceProductState.Extracted).data)
+            val data = (state as VoiceProductState.Extracted).data
+            // Reset PRIMA di navigare per evitare loop
+            viewModel.reset()
+            onNavigateToConfirm(data)
         }
     }
 

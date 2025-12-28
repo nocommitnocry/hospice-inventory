@@ -237,6 +237,19 @@ class VoiceService @Inject constructor(
     }
 
     /**
+     * Resetta lo stato a Idle senza interagire con SpeechRecognizer.
+     * Utile quando un ViewModel vuole assicurarsi di partire da uno stato pulito.
+     */
+    fun resetState() {
+        silenceJob?.cancel()
+        silenceJob = null
+        accumulatedText.clear()
+        lastConfidence = 0f
+        _state.value = VoiceState.Idle
+        Log.d(TAG, "State reset to Idle")
+    }
+
+    /**
      * Rilascia le risorse del servizio.
      * Chiamare quando il servizio non è più necessario.
      */

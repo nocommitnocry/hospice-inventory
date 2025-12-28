@@ -68,8 +68,12 @@ class VoiceMaintenanceViewModel @Inject constructor(
                         fullTranscript = voiceState.text
                     }
                     is VoiceState.Result -> {
-                        fullTranscript = voiceState.text
-                        processTranscript()
+                        // Processa solo se eravamo in ascolto (evita vecchi stati dal singleton)
+                        if (_state.value is VoiceMaintenanceState.Listening ||
+                            _state.value is VoiceMaintenanceState.Transcribing) {
+                            fullTranscript = voiceState.text
+                            processTranscript()
+                        }
                     }
                     is VoiceState.Error -> {
                         _state.value = VoiceMaintenanceState.Error(voiceState.message)
@@ -307,5 +311,7 @@ class VoiceMaintenanceViewModel @Inject constructor(
     fun reset() {
         fullTranscript = ""
         _state.value = VoiceMaintenanceState.Idle
+        // Resetta anche VoiceService per evitare che vecchi stati vengano riprocessati
+        voiceService.resetState()
     }
 }

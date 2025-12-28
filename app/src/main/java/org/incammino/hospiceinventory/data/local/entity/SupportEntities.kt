@@ -13,26 +13,45 @@ import org.incammino.hospiceinventory.domain.model.EmailStatus
  * Entità Sede/Ubicazione
  * Rappresenta un luogo fisico dove possono essere collocati i prodotti.
  * Supporta una gerarchia (es: Edificio > Piano > Stanza).
+ *
+ * Aggiornato Fase 3 (28/12/2025): aggiunta gerarchia completa
  */
 @Entity(
     tableName = "locations",
     indices = [
         Index(value = ["name"]),
         Index(value = ["parentId"]),
+        Index(value = ["floor"]),
+        Index(value = ["department"]),
         Index(value = ["isActive"])
     ]
 )
 data class LocationEntity(
     @PrimaryKey
     val id: String,
-    
-    val name: String,
-    val parentId: String? = null,  // Per gerarchia (Piano > Stanza)
-    val address: String? = null,
-    val coordinates: String? = null,  // GEO per future espansioni
+
+    // Identificazione
+    val name: String,                          // "Camera 15"
+    val type: String? = null,                  // LocationType come stringa
+
+    // Gerarchia
+    val parentId: String? = null,              // ID ubicazione padre
+    val floor: String? = null,                 // "PT", "P1", "P-1"
+    val floorName: String? = null,             // "Piano Terra", "Primo Piano"
+    val department: String? = null,            // "Degenza" (tag, non FK)
+    val building: String? = null,              // "Hospice Principale"
+
+    // Dettagli
+    val hasOxygenOutlet: Boolean = false,      // Attacco ossigeno
+    val bedCount: Int? = null,                 // Posti letto
+    val address: String? = null,               // Per edifici esterni
+    val coordinates: String? = null,           // GEO per future espansioni
     val notes: String? = null,
+
+    // Metadata
     val isActive: Boolean = true,
-    
+    val needsCompletion: Boolean = false,      // Flag per dati incompleti
+
     val createdAt: Instant,
     val updatedAt: Instant
 )

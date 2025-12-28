@@ -6,6 +6,7 @@ import kotlinx.datetime.Clock
 import org.incammino.hospiceinventory.data.local.dao.LocationDao
 import org.incammino.hospiceinventory.data.local.entity.LocationEntity
 import org.incammino.hospiceinventory.domain.model.Location
+import org.incammino.hospiceinventory.domain.model.LocationType
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -167,28 +168,48 @@ class LocationRepository @Inject constructor(
 
 /**
  * Converte LocationEntity in Location (domain model).
+ * Aggiornato Fase 3 (28/12/2025): mapping gerarchia completa
  */
 fun LocationEntity.toDomain(): Location = Location(
     id = id,
     name = name,
+    type = type?.let { typeName ->
+        LocationType.entries.find { it.name == typeName }
+    },
     parentId = parentId,
-    address = address,
-    coordinates = coordinates,
-    notes = notes,
-    isActive = isActive
-)
-
-/**
- * Converte Location (domain model) in LocationEntity.
- */
-fun Location.toEntity(): LocationEntity = LocationEntity(
-    id = id,
-    name = name,
-    parentId = parentId,
+    floor = floor,
+    floorName = floorName,
+    department = department,
+    building = building,
+    hasOxygenOutlet = hasOxygenOutlet,
+    bedCount = bedCount,
     address = address,
     coordinates = coordinates,
     notes = notes,
     isActive = isActive,
-    createdAt = Clock.System.now(),  // Placeholder
-    updatedAt = Clock.System.now()   // Placeholder
+    needsCompletion = needsCompletion
+)
+
+/**
+ * Converte Location (domain model) in LocationEntity.
+ * Aggiornato Fase 3 (28/12/2025): mapping gerarchia completa
+ */
+fun Location.toEntity(): LocationEntity = LocationEntity(
+    id = id,
+    name = name,
+    type = type?.name,
+    parentId = parentId,
+    floor = floor,
+    floorName = floorName,
+    department = department,
+    building = building,
+    hasOxygenOutlet = hasOxygenOutlet,
+    bedCount = bedCount,
+    address = address,
+    coordinates = coordinates,
+    notes = notes,
+    isActive = isActive,
+    needsCompletion = needsCompletion,
+    createdAt = Clock.System.now(),  // Placeholder, sovrascritto in insert/update
+    updatedAt = Clock.System.now()   // Placeholder, sovrascritto in insert/update
 )

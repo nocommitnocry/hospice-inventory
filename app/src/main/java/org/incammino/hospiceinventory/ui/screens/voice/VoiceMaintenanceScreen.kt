@@ -65,7 +65,10 @@ fun VoiceMaintenanceScreen(
     // Naviga automaticamente quando estrazione completata
     LaunchedEffect(state) {
         if (state is VoiceMaintenanceState.Extracted) {
-            onNavigateToConfirm((state as VoiceMaintenanceState.Extracted).data)
+            val data = (state as VoiceMaintenanceState.Extracted).data
+            // Reset PRIMA di navigare per evitare loop
+            viewModel.reset()
+            onNavigateToConfirm(data)
         }
     }
 

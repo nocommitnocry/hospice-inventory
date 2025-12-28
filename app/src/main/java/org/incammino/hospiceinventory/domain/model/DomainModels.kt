@@ -218,17 +218,47 @@ data class Assignee(
 )
 
 /**
+ * Tipo di ubicazione per classificazione gerarchica.
+ * Aggiornato Fase 3 (28/12/2025)
+ */
+enum class LocationType(val label: String) {
+    BUILDING("Edificio"),
+    FLOOR("Piano"),
+    ROOM("Camera"),
+    CORRIDOR("Corridoio"),
+    STORAGE("Magazzino"),
+    TECHNICAL("Locale tecnico"),
+    OFFICE("Ufficio"),
+    COMMON_AREA("Area comune"),
+    EXTERNAL("Esterno")
+}
+
+/**
  * Domain model per Location
+ * Aggiornato Fase 3 (28/12/2025): gerarchia completa
  */
 data class Location(
     val id: String = "",
     val name: String,
+    val type: LocationType? = null,
     val parentId: String? = null,
+    val floor: String? = null,
+    val floorName: String? = null,
+    val department: String? = null,
+    val building: String? = null,
+    val hasOxygenOutlet: Boolean = false,
+    val bedCount: Int? = null,
     val address: String? = null,
     val coordinates: String? = null,
     val notes: String? = null,
-    val isActive: Boolean = true
-)
+    val isActive: Boolean = true,
+    val needsCompletion: Boolean = false
+) {
+    /** Percorso completo es. "Hospice > Piano 1 > Camera 15" */
+    val fullPath: String
+        get() = listOfNotNull(building, floorName, name)
+            .joinToString(" > ")
+}
 
 /**
  * Alert di manutenzione per la UI
