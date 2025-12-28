@@ -219,4 +219,204 @@ $transcript
 JSON:
 """.trimIndent()
     }
+
+    /**
+     * Prompt per estrazione dati nuovo manutentore/fornitore.
+     * L'utente ha dettato i dati dell'azienda: nome, contatti, indirizzo, ecc.
+     * Fase 3 (28/12/2025)
+     */
+    fun maintainerExtractionPrompt(transcript: String): String {
+        return """
+Sei un assistente per la registrazione di manutentori/fornitori in un hospice.
+L'utente ha dettato i dati di un'azienda o tecnico da aggiungere all'anagrafica.
+
+ESTRAI i dati dal testo e rispondi SOLO con JSON valido, senza markdown o commenti.
+
+FORMATO RISPOSTA (JSON puro):
+{
+  "company": {
+    "name": "nome azienda/tecnico (obbligatorio)",
+    "vatNumber": "partita IVA o null",
+    "specialization": "specializzazione o null"
+  },
+  "contact": {
+    "email": "email o null",
+    "phone": "telefono o null",
+    "contactPerson": "persona di riferimento o null"
+  },
+  "address": {
+    "street": "via/indirizzo o null",
+    "city": "città o null",
+    "postalCode": "CAP o null",
+    "province": "provincia (sigla) o null"
+  },
+  "business": {
+    "isSupplier": true_o_false_o_null,
+    "notes": "note o null"
+  },
+  "confidence": {
+    "overall": 0.0-1.0,
+    "missingFields": ["campo1"]
+  }
+}
+
+CAMPO OBBLIGATORIO: company.name
+
+REGOLE ESTRAZIONE:
+
+1. AZIENDA:
+   - "TechMed SRL" → name="TechMed SRL"
+   - "ditta Rossi" → name="Rossi"
+   - "Mario Bianchi elettricista" → name="Mario Bianchi", specialization="Elettricista"
+   - Specializzazioni comuni: Elettricista, Idraulico, Frigorista, Elettromedicali, Informatica, Multiservizi
+
+2. PARTITA IVA:
+   - Formato italiano: 11 cifre (es. 12345678901)
+   - Potrebbe essere dettata come "partita IVA uno due tre quattro..."
+   - "P.IVA", "partita IVA", "codice fiscale azienda" → vatNumber
+
+3. CONTATTI:
+   - Formattazione telefono: mantieni numeri, rimuovi spazi extra
+   - "zero due" → "02", "tre tre nove" → "339"
+   - Email: cerca pattern "chiocciola" o "at" per @
+   - "info chiocciola techmed punto it" → "info@techmed.it"
+   - Referente: "chiedere di Mario", "contatto Marco Rossi" → contactPerson
+
+4. INDIRIZZO:
+   - Via/piazza + numero civico → street
+   - "via Roma 15" → street="Via Roma 15"
+   - Province: MI, MB, VA, CO, PV, LO, CR, MN, BG, BS...
+   - "Milano provincia" → city="Milano", province="MI"
+
+5. BUSINESS:
+   - "è anche fornitore", "ci vende anche" → isSupplier=true
+   - "solo assistenza", "solo manutenzione" → isSupplier=false
+   - Default: null (non specificato)
+
+6. CONFIDENCE:
+   - 0.9-1.0: nome chiaro, contatti presenti
+   - 0.7-0.9: nome chiaro, alcuni contatti
+   - 0.5-0.7: solo nome estratto
+   - <0.5: testo confuso
+   - missingFields: elenca "name" se mancante, poi "email", "phone" se non trovati
+
+TESTO UTENTE:
+\"\"\"
+$transcript
+\"\"\"
+
+JSON:
+""".trimIndent()
+    }
+
+    /**
+     * Prompt per estrazione dati nuova ubicazione.
+     * L'utente ha dettato i dati del luogo: nome, tipo, gerarchia, caratteristiche.
+     * Fase 3 (28/12/2025)
+     */
+    fun locationExtractionPrompt(transcript: String): String {
+        return """
+Sei un assistente per la registrazione di ubicazioni in un hospice.
+L'utente ha dettato i dati di un luogo da aggiungere all'anagrafica.
+
+ESTRAI i dati dal testo e rispondi SOLO con JSON valido, senza markdown o commenti.
+
+FORMATO RISPOSTA (JSON puro):
+{
+  "location": {
+    "name": "nome ubicazione (obbligatorio)",
+    "type": "BUILDING|FLOOR|ROOM|CORRIDOR|STORAGE|TECHNICAL|OFFICE|COMMON_AREA|EXTERNAL|null"
+  },
+  "hierarchy": {
+    "buildingName": "nome edificio o null",
+    "floorCode": "PT|P1|P2|P-1 o null",
+    "floorName": "Piano Terra|Primo Piano o null",
+    "department": "reparto o null"
+  },
+  "details": {
+    "hasOxygenOutlet": true_o_false_o_null,
+    "bedCount": numero_posti_letto_o_null,
+    "notes": "note o null"
+  },
+  "confidence": {
+    "overall": 0.0-1.0,
+    "missingFields": ["campo1"]
+  }
+}
+
+CAMPO OBBLIGATORIO: location.name
+
+REGOLE ESTRAZIONE:
+
+1. TIPO UBICAZIONE:
+   - BUILDING: edificio, struttura, palazzina, corpo, blocco
+   - FLOOR: piano (usato raramente come ubicazione a sé)
+   - ROOM: camera, stanza, locale paziente (con numero)
+   - CORRIDOR: corridoio, disimpegno
+   - STORAGE: magazzino, deposito, ripostiglio
+   - TECHNICAL: locale tecnico, centrale termica, quadro elettrico, locale UPS
+   - OFFICE: ufficio, studio, segreteria
+   - COMMON_AREA: sala, soggiorno, cucina, bagno comune, ingresso
+   - EXTERNAL: esterno, giardino, parcheggio, cortile
+
+2. NOME:
+   - "camera 12" → name="Camera 12", type="ROOM"
+   - "ufficio direzione" → name="Ufficio Direzione", type="OFFICE"
+   - "magazzino piano terra" → name="Magazzino", type="STORAGE"
+   - Normalizza maiuscole: prima lettera maiuscola per ogni parola
+
+3. GERARCHIA:
+   - "nell'hospice principale" → buildingName="Hospice Principale"
+   - "al primo piano" → floorCode="P1", floorName="Primo Piano"
+   - "piano terra" → floorCode="PT", floorName="Piano Terra"
+   - "seminterrato" / "interrato" → floorCode="P-1"
+   - "reparto degenza" → department="Degenza"
+   - Reparti comuni: Degenza, Ambulatorio, Day Hospital, Direzione
+
+4. PIANO (mappatura):
+   - "piano terra", "pianterreno" → PT / "Piano Terra"
+   - "primo piano" → P1 / "Primo Piano"
+   - "secondo piano" → P2 / "Secondo Piano"
+   - "seminterrato", "piano meno uno" → P-1 / "Seminterrato"
+   - "sottotetto", "mansarda" → PS / "Sottotetto"
+
+5. DETTAGLI:
+   - "con attacco ossigeno", "presa O2" → hasOxygenOutlet=true
+   - "due posti letto", "camera doppia" → bedCount=2
+   - "camera singola", "un letto" → bedCount=1
+   - "tre letti" → bedCount=3
+
+6. CONFIDENCE:
+   - 0.9-1.0: nome e tipo chiari, gerarchia presente
+   - 0.7-0.9: nome chiaro, tipo dedotto
+   - 0.5-0.7: solo nome estratto
+   - <0.5: testo confuso
+   - missingFields: elenca "name" se mancante, poi altri campi
+
+TESTO UTENTE:
+\"\"\"
+$transcript
+\"\"\"
+
+JSON:
+""".trimIndent()
+    }
+
+    /**
+     * Mappa i tipi di ubicazione dal formato Gemini al LocationType dell'app.
+     */
+    fun mapLocationType(geminiType: String?): String? {
+        return when (geminiType?.uppercase()) {
+            "BUILDING" -> "BUILDING"
+            "FLOOR" -> "FLOOR"
+            "ROOM" -> "ROOM"
+            "CORRIDOR" -> "CORRIDOR"
+            "STORAGE" -> "STORAGE"
+            "TECHNICAL" -> "TECHNICAL"
+            "OFFICE" -> "OFFICE"
+            "COMMON_AREA" -> "COMMON_AREA"
+            "EXTERNAL" -> "EXTERNAL"
+            else -> null
+        }
+    }
 }

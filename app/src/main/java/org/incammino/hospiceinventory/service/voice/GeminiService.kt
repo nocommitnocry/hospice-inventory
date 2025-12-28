@@ -2041,4 +2041,222 @@ class GeminiService @Inject constructor(
             }
         }
     }
+
+    /**
+     * Estrae dati strutturati da un transcript vocale di nuovo manutentore/fornitore.
+     * Una singola chiamata API, nessuna conversazione multi-step.
+     *
+     * Paradigma "Voice Dump + Visual Confirm" (Fase 3 - 28/12/2025):
+     * - L'utente detta tutto in una volta
+     * - Gemini estrae i dati in formato JSON
+     * - La UI mostra una scheda precompilata per verifica
+     *
+     * @param transcript Il testo trascritto dal voice input
+     * @return Result con MaintainerExtraction o errore
+     */
+    suspend fun extractMaintainerData(transcript: String): Result<MaintainerExtraction> {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Rate limiting
+                if (!rateLimiter.tryAcquire()) {
+                    AuditLogger.log(AuditLogger.EventType.RATE_LIMITED, "Maintainer extraction request blocked")
+                    return@withContext Result.failure(
+                        Exception("Troppe richieste. Attendi un momento prima di riprovare.")
+                    )
+                }
+
+                // Sanitizzazione input
+                val sanitizeResult = InputSanitizer.sanitize(transcript)
+                val sanitizedTranscript = when (sanitizeResult) {
+                    is InputSanitizer.SanitizeResult.Clean -> sanitizeResult.sanitizedInput
+                    is InputSanitizer.SanitizeResult.Suspicious -> {
+                        AuditLogger.log(
+                            AuditLogger.EventType.SUSPICIOUS_INPUT,
+                            "Suspicious input in maintainer extraction: ${sanitizeResult.reason}"
+                        )
+                        sanitizeResult.sanitizedInput
+                    }
+                    is InputSanitizer.SanitizeResult.Rejected -> {
+                        return@withContext Result.failure(
+                            Exception("Input non valido: ${sanitizeResult.reason}")
+                        )
+                    }
+                }
+
+                // Genera prompt e chiama Gemini
+                val prompt = ExtractionPrompts.maintainerExtractionPrompt(sanitizedTranscript)
+
+                AuditLogger.log(
+                    AuditLogger.EventType.REQUEST,
+                    "Maintainer extraction",
+                    mapOf("transcript_length" to sanitizedTranscript.length)
+                )
+
+                val response = generativeModel.generateContent(
+                    content { text(prompt) }
+                )
+
+                val responseText = response.text?.trim() ?: ""
+
+                if (responseText.isBlank()) {
+                    return@withContext Result.failure(
+                        Exception("Risposta vuota da Gemini")
+                    )
+                }
+
+                // Rimuovi eventuali markdown code blocks
+                val jsonText = responseText
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+
+                // Parsa JSON
+                val extraction = try {
+                    kotlinx.serialization.json.Json {
+                        ignoreUnknownKeys = true
+                        isLenient = true
+                    }.decodeFromString<MaintainerExtraction>(jsonText)
+                } catch (e: Exception) {
+                    Log.e(TAG, "JSON parsing failed for maintainer: $jsonText", e)
+                    return@withContext Result.failure(
+                        Exception("Errore nel parsing della risposta: ${e.message}")
+                    )
+                }
+
+                AuditLogger.log(
+                    AuditLogger.EventType.RESPONSE,
+                    "Maintainer extraction completed",
+                    mapOf(
+                        "confidence" to extraction.confidence.overall,
+                        "missing_fields" to extraction.confidence.missingFields.size
+                    )
+                )
+
+                Result.success(extraction)
+
+            } catch (e: ResponseStoppedException) {
+                Log.e(TAG, "Gemini response stopped", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Response stopped: ${e.message}")
+                Result.failure(Exception("Risposta interrotta. Riprova."))
+            } catch (e: SerializationException) {
+                Log.e(TAG, "Serialization error", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Serialization error: ${e.message}")
+                Result.failure(Exception("Errore di serializzazione: ${e.message}"))
+            } catch (e: Exception) {
+                Log.e(TAG, "Maintainer extraction failed", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Maintainer extraction failed: ${e.message}")
+                Result.failure(Exception("Errore durante l'estrazione: ${e.message}"))
+            }
+        }
+    }
+
+    /**
+     * Estrae dati strutturati da un transcript vocale di nuova ubicazione.
+     * Una singola chiamata API, nessuna conversazione multi-step.
+     *
+     * Paradigma "Voice Dump + Visual Confirm" (Fase 3 - 28/12/2025):
+     * - L'utente detta tutto in una volta
+     * - Gemini estrae i dati in formato JSON
+     * - La UI mostra una scheda precompilata per verifica
+     *
+     * @param transcript Il testo trascritto dal voice input
+     * @return Result con LocationExtraction o errore
+     */
+    suspend fun extractLocationData(transcript: String): Result<LocationExtraction> {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Rate limiting
+                if (!rateLimiter.tryAcquire()) {
+                    AuditLogger.log(AuditLogger.EventType.RATE_LIMITED, "Location extraction request blocked")
+                    return@withContext Result.failure(
+                        Exception("Troppe richieste. Attendi un momento prima di riprovare.")
+                    )
+                }
+
+                // Sanitizzazione input
+                val sanitizeResult = InputSanitizer.sanitize(transcript)
+                val sanitizedTranscript = when (sanitizeResult) {
+                    is InputSanitizer.SanitizeResult.Clean -> sanitizeResult.sanitizedInput
+                    is InputSanitizer.SanitizeResult.Suspicious -> {
+                        AuditLogger.log(
+                            AuditLogger.EventType.SUSPICIOUS_INPUT,
+                            "Suspicious input in location extraction: ${sanitizeResult.reason}"
+                        )
+                        sanitizeResult.sanitizedInput
+                    }
+                    is InputSanitizer.SanitizeResult.Rejected -> {
+                        return@withContext Result.failure(
+                            Exception("Input non valido: ${sanitizeResult.reason}")
+                        )
+                    }
+                }
+
+                // Genera prompt e chiama Gemini
+                val prompt = ExtractionPrompts.locationExtractionPrompt(sanitizedTranscript)
+
+                AuditLogger.log(
+                    AuditLogger.EventType.REQUEST,
+                    "Location extraction",
+                    mapOf("transcript_length" to sanitizedTranscript.length)
+                )
+
+                val response = generativeModel.generateContent(
+                    content { text(prompt) }
+                )
+
+                val responseText = response.text?.trim() ?: ""
+
+                if (responseText.isBlank()) {
+                    return@withContext Result.failure(
+                        Exception("Risposta vuota da Gemini")
+                    )
+                }
+
+                // Rimuovi eventuali markdown code blocks
+                val jsonText = responseText
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+
+                // Parsa JSON
+                val extraction = try {
+                    kotlinx.serialization.json.Json {
+                        ignoreUnknownKeys = true
+                        isLenient = true
+                    }.decodeFromString<LocationExtraction>(jsonText)
+                } catch (e: Exception) {
+                    Log.e(TAG, "JSON parsing failed for location: $jsonText", e)
+                    return@withContext Result.failure(
+                        Exception("Errore nel parsing della risposta: ${e.message}")
+                    )
+                }
+
+                AuditLogger.log(
+                    AuditLogger.EventType.RESPONSE,
+                    "Location extraction completed",
+                    mapOf(
+                        "confidence" to extraction.confidence.overall,
+                        "missing_fields" to extraction.confidence.missingFields.size
+                    )
+                )
+
+                Result.success(extraction)
+
+            } catch (e: ResponseStoppedException) {
+                Log.e(TAG, "Gemini response stopped", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Response stopped: ${e.message}")
+                Result.failure(Exception("Risposta interrotta. Riprova."))
+            } catch (e: SerializationException) {
+                Log.e(TAG, "Serialization error", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Serialization error: ${e.message}")
+                Result.failure(Exception("Errore di serializzazione: ${e.message}"))
+            } catch (e: Exception) {
+                Log.e(TAG, "Location extraction failed", e)
+                AuditLogger.log(AuditLogger.EventType.ERROR, "Location extraction failed: ${e.message}")
+                Result.failure(Exception("Errore durante l'estrazione: ${e.message}"))
+            }
+        }
+    }
 }

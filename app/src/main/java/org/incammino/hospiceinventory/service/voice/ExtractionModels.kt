@@ -234,6 +234,191 @@ sealed class LocationMatch {
     data class NotFound(val searchTerms: String) : LocationMatch()
 }
 
+// ==================== MANUTENTORE ====================
+
+/**
+ * Risultato dell'estrazione dati manutentore da testo vocale.
+ * Fase 3 (28/12/2025)
+ */
+@Serializable
+data class MaintainerExtraction(
+    val company: MaintainerCompanyInfo,
+    val contact: MaintainerContactInfo?,
+    val address: MaintainerAddressInfo?,
+    val business: MaintainerBusinessInfo?,
+    val confidence: ConfidenceInfo
+)
+
+@Serializable
+data class MaintainerCompanyInfo(
+    val name: String? = null,
+    val vatNumber: String? = null,   // Partita IVA
+    val specialization: String? = null
+)
+
+@Serializable
+data class MaintainerContactInfo(
+    val email: String? = null,
+    val phone: String? = null,
+    val contactPerson: String? = null
+)
+
+@Serializable
+data class MaintainerAddressInfo(
+    val street: String? = null,
+    val city: String? = null,
+    val postalCode: String? = null,
+    val province: String? = null
+)
+
+@Serializable
+data class MaintainerBusinessInfo(
+    val isSupplier: Boolean? = null,
+    val notes: String? = null
+)
+
+// ==================== UBICAZIONE ====================
+
+/**
+ * Risultato dell'estrazione dati ubicazione da testo vocale.
+ * Fase 3 (28/12/2025)
+ */
+@Serializable
+data class LocationExtraction(
+    val location: LocationInfoExtraction,
+    val hierarchy: LocationHierarchyInfo?,
+    val details: LocationDetailsInfo?,
+    val confidence: ConfidenceInfo
+)
+
+@Serializable
+data class LocationInfoExtraction(
+    val name: String? = null,
+    val type: String? = null   // BUILDING, FLOOR, ROOM, CORRIDOR, STORAGE, TECHNICAL, OFFICE, COMMON_AREA, EXTERNAL
+)
+
+@Serializable
+data class LocationHierarchyInfo(
+    val buildingName: String? = null,
+    val floorCode: String? = null,      // PT, P1, P-1, etc.
+    val floorName: String? = null,      // Piano Terra, Primo Piano
+    val department: String? = null      // Degenza, Ambulatorio, etc.
+)
+
+@Serializable
+data class LocationDetailsInfo(
+    val hasOxygenOutlet: Boolean? = null,
+    val bedCount: Int? = null,
+    val notes: String? = null
+)
+
+// ==================== STATI UI MANUTENTORE ====================
+
+/**
+ * Stati per VoiceMaintainerViewModel.
+ * Fase 3 (28/12/2025)
+ */
+sealed class VoiceMaintainerState {
+    /** Pronto per iniziare */
+    data object Idle : VoiceMaintainerState()
+
+    /** Microfono attivo, in ascolto */
+    data object Listening : VoiceMaintainerState()
+
+    /** Mostra testo parziale durante ascolto */
+    data class Transcribing(val partialText: String) : VoiceMaintainerState()
+
+    /** Gemini sta elaborando */
+    data object Processing : VoiceMaintainerState()
+
+    /** Estrazione completata, pronto per conferma */
+    data class Extracted(val data: MaintainerConfirmData) : VoiceMaintainerState()
+
+    /** Errore */
+    data class Error(val message: String) : VoiceMaintainerState()
+}
+
+/**
+ * Dati per la schermata di conferma manutentore.
+ * Fase 3 (28/12/2025)
+ */
+data class MaintainerConfirmData(
+    // Dati azienda
+    val name: String,
+    val vatNumber: String,
+    val specialization: String,
+
+    // Contatti
+    val email: String,
+    val phone: String,
+    val contactPerson: String,
+
+    // Indirizzo
+    val street: String,
+    val city: String,
+    val postalCode: String,
+    val province: String,
+
+    // Business
+    val isSupplier: Boolean,
+    val notes: String,
+
+    // Metadata
+    val confidence: Float,
+    val warnings: List<String>
+)
+
+// ==================== STATI UI UBICAZIONE ====================
+
+/**
+ * Stati per VoiceLocationViewModel.
+ * Fase 3 (28/12/2025)
+ */
+sealed class VoiceLocationState {
+    /** Pronto per iniziare */
+    data object Idle : VoiceLocationState()
+
+    /** Microfono attivo, in ascolto */
+    data object Listening : VoiceLocationState()
+
+    /** Mostra testo parziale durante ascolto */
+    data class Transcribing(val partialText: String) : VoiceLocationState()
+
+    /** Gemini sta elaborando */
+    data object Processing : VoiceLocationState()
+
+    /** Estrazione completata, pronto per conferma */
+    data class Extracted(val data: LocationConfirmData) : VoiceLocationState()
+
+    /** Errore */
+    data class Error(val message: String) : VoiceLocationState()
+}
+
+/**
+ * Dati per la schermata di conferma ubicazione.
+ * Fase 3 (28/12/2025)
+ */
+data class LocationConfirmData(
+    // Identificazione
+    val name: String,
+    val type: String,
+
+    // Gerarchia
+    val buildingName: String,
+    val floorCode: String,
+    val floorName: String,
+    val department: String,
+
+    // Dettagli
+    val hasOxygenOutlet: Boolean,
+    val bedCount: Int?,
+    val notes: String,
+
+    // Metadata
+    val confidence: Float,
+    val warnings: List<String>
+)
+
 // ==================== STATI SALVATAGGIO ====================
 
 /**

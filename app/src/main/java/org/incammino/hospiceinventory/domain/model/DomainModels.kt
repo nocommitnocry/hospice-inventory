@@ -152,7 +152,8 @@ data class Maintainer(
     val specialization: String?,
     val isSupplier: Boolean,
     val notes: String?,
-    val isActive: Boolean
+    val isActive: Boolean,
+    val needsCompletion: Boolean = false
 ) {
     /**
      * Indirizzo completo formattato.

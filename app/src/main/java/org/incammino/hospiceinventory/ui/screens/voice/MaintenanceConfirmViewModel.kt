@@ -7,12 +7,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import org.incammino.hospiceinventory.data.repository.MaintenanceRepository
+import org.incammino.hospiceinventory.data.repository.MaintainerRepository
+import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.domain.model.Maintenance
 import org.incammino.hospiceinventory.domain.model.MaintenanceType
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
@@ -27,9 +30,20 @@ import javax.inject.Inject
  *
  * Paradigma "Voice Dump + Visual Confirm" (v2.0 - 26/12/2025)
  */
+/**
+ * Stato UI per la creazione inline di entità.
+ */
+data class InlineCreationState(
+    val isCreatingMaintainer: Boolean = false,
+    val maintainerWasCreatedInline: Boolean = false,
+    val createdMaintainerId: String? = null,
+    val createdMaintainerName: String? = null
+)
+
 @HiltViewModel
 class MaintenanceConfirmViewModel @Inject constructor(
-    private val maintenanceRepository: MaintenanceRepository
+    private val maintenanceRepository: MaintenanceRepository,
+    private val maintainerRepository: MaintainerRepository
 ) : ViewModel() {
 
     companion object {
@@ -38,6 +52,9 @@ class MaintenanceConfirmViewModel @Inject constructor(
 
     private val _saveState = MutableStateFlow<SaveState>(SaveState.Idle)
     val saveState: StateFlow<SaveState> = _saveState.asStateFlow()
+
+    private val _inlineCreationState = MutableStateFlow(InlineCreationState())
+    val inlineCreationState: StateFlow<InlineCreationState> = _inlineCreationState.asStateFlow()
 
     /**
      * Salva la manutenzione nel database.
@@ -152,5 +169,70 @@ class MaintenanceConfirmViewModel @Inject constructor(
      */
     fun reset() {
         _saveState.value = SaveState.Idle
+        _inlineCreationState.value = InlineCreationState()
+    }
+
+    /**
+     * Crea un manutentore inline con dati minimi.
+     * Il manutentore avrà needsCompletion=true e dovrà essere completato successivamente.
+     *
+     * @param name Il nome del manutentore da creare
+     * @param company L'azienda (opzionale)
+     * @return Il MaintainerMatch.Found con il nuovo manutentore, oppure null in caso di errore
+     */
+    fun createMaintainerInline(
+        name: String,
+        company: String? = null,
+        onSuccess: (MaintainerMatch.Found) -> Unit
+    ) {
+        if (name.isBlank()) return
+
+        _inlineCreationState.update { it.copy(isCreatingMaintainer = true) }
+
+        viewModelScope.launch {
+            try {
+                val maintainerName = company?.takeIf { it.isNotBlank() && it != name }
+                    ?.let { "$name ($it)" }
+                    ?: name
+
+                val newMaintainer = Maintainer(
+                    id = "",  // Repository genera UUID
+                    name = maintainerName,
+                    email = null,
+                    phone = null,
+                    address = null,
+                    city = null,
+                    postalCode = null,
+                    province = null,
+                    vatNumber = null,
+                    contactPerson = null,
+                    specialization = null,
+                    isSupplier = false,
+                    notes = "Creato da registrazione vocale - da completare",
+                    isActive = true,
+                    needsCompletion = true
+                )
+
+                val id = maintainerRepository.insert(newMaintainer)
+                val createdMaintainer = newMaintainer.copy(id = id)
+
+                Log.d(TAG, "Maintainer created inline: $id - $maintainerName")
+
+                _inlineCreationState.update {
+                    it.copy(
+                        isCreatingMaintainer = false,
+                        maintainerWasCreatedInline = true,
+                        createdMaintainerId = id,
+                        createdMaintainerName = maintainerName
+                    )
+                }
+
+                onSuccess(MaintainerMatch.Found(createdMaintainer))
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create maintainer inline", e)
+                _inlineCreationState.update { it.copy(isCreatingMaintainer = false) }
+            }
+        }
     }
 }

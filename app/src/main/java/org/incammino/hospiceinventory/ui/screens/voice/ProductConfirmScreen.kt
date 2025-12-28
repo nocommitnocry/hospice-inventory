@@ -62,6 +62,7 @@ import org.incammino.hospiceinventory.service.voice.LocationMatch
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.ProductConfirmData
 import org.incammino.hospiceinventory.service.voice.SaveState
+import org.incammino.hospiceinventory.ui.components.InlineEntityCreator
 import org.incammino.hospiceinventory.ui.theme.AlertWarning
 
 /**
@@ -80,6 +81,7 @@ fun ProductConfirmScreen(
     onNavigateToLocationSearch: () -> Unit = {}
 ) {
     val saveState by viewModel.saveState.collectAsState()
+    val inlineCreationState by viewModel.inlineCreationState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Stato locale per i campi editabili
@@ -236,7 +238,14 @@ fun ProductConfirmScreen(
             LocationSelector(
                 locationMatch = locationMatch,
                 onLocationSelected = { locationMatch = it },
-                onSearchLocation = onNavigateToLocationSearch
+                onSearchLocation = onNavigateToLocationSearch,
+                isCreatingInline = inlineCreationState.isCreatingLocation,
+                wasCreatedInline = inlineCreationState.locationWasCreatedInline,
+                onCreateInline = { name ->
+                    viewModel.createLocationInline(name) { match ->
+                        locationMatch = match
+                    }
+                }
             )
 
             // Sezione Fornitore
@@ -244,7 +253,14 @@ fun ProductConfirmScreen(
 
             SupplierSelector(
                 supplierMatch = supplierMatch,
-                onSupplierUpdated = { supplierMatch = it }
+                onSupplierUpdated = { supplierMatch = it },
+                isCreatingInline = inlineCreationState.isCreatingSupplier,
+                wasCreatedInline = inlineCreationState.supplierWasCreatedInline,
+                onCreateInline = { name ->
+                    viewModel.createSupplierInline(name) { match ->
+                        supplierMatch = match
+                    }
+                }
             )
 
             // Sezione Garanzia
@@ -413,7 +429,10 @@ private fun CategorySelector(
 private fun LocationSelector(
     locationMatch: LocationMatch,
     onLocationSelected: (LocationMatch) -> Unit,
-    onSearchLocation: () -> Unit
+    onSearchLocation: () -> Unit,
+    isCreatingInline: Boolean = false,
+    wasCreatedInline: Boolean = false,
+    onCreateInline: (name: String) -> Unit = {}
 ) {
     var showAmbiguousDialog by remember { mutableStateOf(false) }
 
@@ -436,12 +455,20 @@ private fun LocationSelector(
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium
                         )
-                        locationMatch.location.notes?.let { note ->
+                        if (locationMatch.location.needsCompletion) {
                             Text(
-                                text = note,
+                                text = "Da completare",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.tertiary
                             )
+                        } else {
+                            locationMatch.location.notes?.let { note ->
+                                Text(
+                                    text = note,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                     Icon(
@@ -497,25 +524,28 @@ private fun LocationSelector(
         }
 
         is LocationMatch.NotFound -> {
-            OutlinedTextField(
-                value = locationMatch.searchTerms,
-                onValueChange = { newValue ->
-                    onLocationSelected(LocationMatch.NotFound(newValue))
-                },
-                label = { Text("Ubicazione") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                trailingIcon = {
-                    Icon(
-                        Icons.Default.Error,
-                        contentDescription = "Non trovata",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                },
-                supportingText = {
-                    Text("Ubicazione non trovata nel sistema")
-                }
-            )
+            if (locationMatch.searchTerms.isNotBlank()) {
+                InlineEntityCreator(
+                    entityName = locationMatch.searchTerms,
+                    entityType = "Ubicazione",
+                    onCreateClick = { onCreateInline(locationMatch.searchTerms) },
+                    isCreating = isCreatingInline,
+                    wasCreated = wasCreatedInline
+                )
+            } else {
+                OutlinedTextField(
+                    value = "",
+                    onValueChange = { newValue ->
+                        onLocationSelected(LocationMatch.NotFound(newValue))
+                    },
+                    label = { Text("Ubicazione") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    supportingText = {
+                        Text("Inserisci un'ubicazione")
+                    }
+                )
+            }
         }
     }
 }
@@ -569,7 +599,10 @@ private fun LocationAmbiguousDialog(
 @Composable
 private fun SupplierSelector(
     supplierMatch: MaintainerMatch,
-    onSupplierUpdated: (MaintainerMatch) -> Unit
+    onSupplierUpdated: (MaintainerMatch) -> Unit,
+    isCreatingInline: Boolean = false,
+    wasCreatedInline: Boolean = false,
+    onCreateInline: (name: String) -> Unit = {}
 ) {
     var showAmbiguousDialog by remember { mutableStateOf(false) }
 
@@ -590,12 +623,20 @@ private fun SupplierSelector(
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium
                         )
-                        supplierMatch.maintainer.email?.let { email ->
+                        if (supplierMatch.maintainer.needsCompletion) {
                             Text(
-                                text = email,
+                                text = "Da completare",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.tertiary
                             )
+                        } else {
+                            supplierMatch.maintainer.email?.let { email ->
+                                Text(
+                                    text = email,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                     Icon(
@@ -651,20 +692,28 @@ private fun SupplierSelector(
         }
 
         is MaintainerMatch.NotFound -> {
-            OutlinedTextField(
-                value = supplierMatch.name,
-                onValueChange = { newValue ->
-                    onSupplierUpdated(MaintainerMatch.NotFound(newValue, supplierMatch.company))
-                },
-                label = { Text("Fornitore") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                supportingText = {
-                    if (supplierMatch.name.isNotBlank()) {
-                        Text("Fornitore non trovato nel sistema")
+            if (supplierMatch.name.isNotBlank()) {
+                InlineEntityCreator(
+                    entityName = supplierMatch.name,
+                    entityType = "Fornitore",
+                    onCreateClick = { onCreateInline(supplierMatch.name) },
+                    isCreating = isCreatingInline,
+                    wasCreated = wasCreatedInline
+                )
+            } else {
+                OutlinedTextField(
+                    value = "",
+                    onValueChange = { newValue ->
+                        onSupplierUpdated(MaintainerMatch.NotFound(newValue, supplierMatch.company))
+                    },
+                    label = { Text("Fornitore") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    supportingText = {
+                        Text("Inserisci un fornitore")
                     }
-                }
-            )
+                )
+            }
         }
 
         is MaintainerMatch.SelfReported -> {

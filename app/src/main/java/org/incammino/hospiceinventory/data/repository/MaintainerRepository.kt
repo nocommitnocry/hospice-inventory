@@ -182,7 +182,8 @@ fun MaintainerEntity.toDomain(): Maintainer = Maintainer(
     specialization = specialization,
     isSupplier = isSupplier,
     notes = notes,
-    isActive = isActive
+    isActive = isActive,
+    needsCompletion = needsCompletion
 )
 
 /**
@@ -205,6 +206,7 @@ fun Maintainer.toEntity(): MaintainerEntity = MaintainerEntity(
     isSupplier = isSupplier,
     notes = notes,
     isActive = isActive,
+    needsCompletion = needsCompletion,
     createdAt = Clock.System.now(),  // Placeholder
     updatedAt = Clock.System.now()   // Placeholder
 )

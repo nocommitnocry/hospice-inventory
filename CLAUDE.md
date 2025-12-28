@@ -757,7 +757,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - [x] `ProductConfirmViewModel.kt` - Logica salvataggio prodotto
 - [x] `Navigation.kt` - Route voice/product, product/confirm
 - [x] `HomeScreen.kt` - Pulsante "Nuovo Prodotto" accanto a "Manutenzione"
-- [ ] Gestione inline creation fornitore/manutentore (TODO: Fase 3)
+- [x] Gestione inline creation fornitore/manutentore (COMPLETATO 28/12/2025)
 
 **Fase 3: Entità di Supporto** (dopo Fase 2)
 - [ ] `VoiceMaintainerScreen` + `MaintainerConfirmScreen`
@@ -772,7 +772,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 #### Entity Resolution ✅ (Implementato 24/12/2025)
 - [x] **EntityResolver** class - Risoluzione nomi → ID con fuzzy match Levenshtein
 - [x] Query sincrone in tutti i Repository
-- [ ] Creazione inline entità mancanti (NotFound → offri creazione)
+- [x] Creazione inline entità mancanti (NotFound → offri creazione) ✅ 28/12/2025
 
 #### Import/Export
 - [ ] **Excel Import** - Parser per dati iniziali (Inventario.xlsx)
@@ -987,6 +987,42 @@ HomeScreen [Nuovo Prodotto]
 - Dropdown per categoria, garanzia, frequenza manutenzione
 - Warnings per confidence bassa o campi mancanti
 - Build: SUCCESSFUL
+
+**P15 - Creazione Inline Entità Mancanti** (IMPLEMENTATO 28/12/2025)
+- Feature: Quando un'entità non esiste (manutentore, ubicazione, fornitore), mostra pulsante "Crea"
+- L'entità viene creata con `needsCompletion=true` per completamento successivo
+- File creato: `ui/components/InlineEntityCreator.kt` - Componente UI riutilizzabile
+- File modificati:
+  - `MaintenanceConfirmViewModel.kt` - +`createMaintainerInline()`
+  - `MaintenanceConfirmScreen.kt` - Usa `InlineEntityCreator` per manutentore NotFound
+  - `ProductConfirmViewModel.kt` - +`createLocationInline()`, +`createSupplierInline()`
+  - `ProductConfirmScreen.kt` - Usa `InlineEntityCreator` per ubicazione/fornitore NotFound
+
+**P16 - DataHolder.consume() causava sparizione ConfirmScreen** (CRITICO - RISOLTO 28/12/2025)
+- Problema: La schermata di conferma appariva brevemente e poi spariva, tornando alla Home
+- Causa: `DataHolder.consume()` rimuoveva i dati dopo la prima lettura. Quando Compose ricomponeva la schermata (comportamento normale), la seconda chiamata trovava `null` e chiamava `popBackStack()`
+- Sessioni di debug: 4 sessioni per identificare il problema
+- Fix in `Navigation.kt`:
+```kotlin
+// PRIMA (problematico - dati persi alla ricomposizione)
+val data = MaintenanceDataHolder.consume()
+
+// DOPO (corretto - dati preservati con remember)
+val data = remember { MaintenanceDataHolder.consume() }
+
+// E per il caso null, evitare chiamate durante composizione:
+} else {
+    LaunchedEffect(Unit) {
+        navController.popBackStack()
+    }
+}
+```
+- Applicato a tutte e 4 le schermate Confirm:
+  - `MaintenanceConfirmScreen`
+  - `ProductConfirmScreen`
+  - `MaintainerConfirmScreen`
+  - `LocationConfirmScreen`
+- File: `Navigation.kt`
 
 ---
 

@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
@@ -14,7 +15,11 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
+import org.incammino.hospiceinventory.data.repository.LocationRepository
+import org.incammino.hospiceinventory.data.repository.MaintainerRepository
 import org.incammino.hospiceinventory.data.repository.ProductRepository
+import org.incammino.hospiceinventory.domain.model.Location
+import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.domain.model.MaintenanceFrequency
 import org.incammino.hospiceinventory.domain.model.Product
 import org.incammino.hospiceinventory.service.voice.LocationMatch
@@ -24,6 +29,20 @@ import java.util.UUID
 import javax.inject.Inject
 
 /**
+ * Stato UI per la creazione inline di entità nel flusso prodotto.
+ */
+data class ProductInlineCreationState(
+    val isCreatingLocation: Boolean = false,
+    val locationWasCreatedInline: Boolean = false,
+    val createdLocationId: String? = null,
+    val createdLocationName: String? = null,
+    val isCreatingSupplier: Boolean = false,
+    val supplierWasCreatedInline: Boolean = false,
+    val createdSupplierId: String? = null,
+    val createdSupplierName: String? = null
+)
+
+/**
  * ViewModel per ProductConfirmScreen.
  * Gestisce il salvataggio del prodotto.
  *
@@ -31,7 +50,9 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class ProductConfirmViewModel @Inject constructor(
-    private val productRepository: ProductRepository
+    private val productRepository: ProductRepository,
+    private val locationRepository: LocationRepository,
+    private val maintainerRepository: MaintainerRepository
 ) : ViewModel() {
 
     companion object {
@@ -40,6 +61,9 @@ class ProductConfirmViewModel @Inject constructor(
 
     private val _saveState = MutableStateFlow<SaveState>(SaveState.Idle)
     val saveState: StateFlow<SaveState> = _saveState.asStateFlow()
+
+    private val _inlineCreationState = MutableStateFlow(ProductInlineCreationState())
+    val inlineCreationState: StateFlow<ProductInlineCreationState> = _inlineCreationState.asStateFlow()
 
     /**
      * Salva il prodotto nel database.
@@ -194,5 +218,122 @@ class ProductConfirmViewModel @Inject constructor(
      */
     fun reset() {
         _saveState.value = SaveState.Idle
+        _inlineCreationState.value = ProductInlineCreationState()
+    }
+
+    /**
+     * Crea una ubicazione inline con dati minimi.
+     * L'ubicazione avrà needsCompletion=true e dovrà essere completata successivamente.
+     *
+     * @param name Il nome dell'ubicazione da creare
+     * @param onSuccess Callback con il nuovo LocationMatch.Found
+     */
+    fun createLocationInline(
+        name: String,
+        onSuccess: (LocationMatch.Found) -> Unit
+    ) {
+        if (name.isBlank()) return
+
+        _inlineCreationState.update { it.copy(isCreatingLocation = true) }
+
+        viewModelScope.launch {
+            try {
+                val newLocation = Location(
+                    id = "",  // Repository genera UUID
+                    name = name.trim(),
+                    type = null,
+                    parentId = null,
+                    floor = null,
+                    floorName = null,
+                    department = null,
+                    building = null,
+                    hasOxygenOutlet = false,
+                    bedCount = null,
+                    address = null,
+                    coordinates = null,
+                    notes = "Creata da registrazione vocale - da completare",
+                    isActive = true,
+                    needsCompletion = true
+                )
+
+                val id = locationRepository.insert(newLocation)
+                val createdLocation = newLocation.copy(id = id)
+
+                Log.d(TAG, "Location created inline: $id - $name")
+
+                _inlineCreationState.update {
+                    it.copy(
+                        isCreatingLocation = false,
+                        locationWasCreatedInline = true,
+                        createdLocationId = id,
+                        createdLocationName = name
+                    )
+                }
+
+                onSuccess(LocationMatch.Found(createdLocation))
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create location inline", e)
+                _inlineCreationState.update { it.copy(isCreatingLocation = false) }
+            }
+        }
+    }
+
+    /**
+     * Crea un fornitore inline con dati minimi.
+     * Il fornitore avrà needsCompletion=true e isSupplier=true.
+     *
+     * @param name Il nome del fornitore da creare
+     * @param onSuccess Callback con il nuovo MaintainerMatch.Found
+     */
+    fun createSupplierInline(
+        name: String,
+        onSuccess: (MaintainerMatch.Found) -> Unit
+    ) {
+        if (name.isBlank()) return
+
+        _inlineCreationState.update { it.copy(isCreatingSupplier = true) }
+
+        viewModelScope.launch {
+            try {
+                val newMaintainer = Maintainer(
+                    id = "",  // Repository genera UUID
+                    name = name.trim(),
+                    email = null,
+                    phone = null,
+                    address = null,
+                    city = null,
+                    postalCode = null,
+                    province = null,
+                    vatNumber = null,
+                    contactPerson = null,
+                    specialization = null,
+                    isSupplier = true,  // È un fornitore
+                    notes = "Creato da registrazione vocale - da completare",
+                    isActive = true,
+                    needsCompletion = true
+                )
+
+                val id = maintainerRepository.insert(newMaintainer)
+                val createdMaintainer = newMaintainer.copy(id = id)
+
+                Log.d(TAG, "Supplier created inline: $id - $name")
+
+                _inlineCreationState.update {
+                    it.copy(
+                        isCreatingSupplier = false,
+                        supplierWasCreatedInline = true,
+                        createdSupplierId = id,
+                        createdSupplierName = name
+                    )
+                }
+
+                onSuccess(MaintainerMatch.Found(createdMaintainer))
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create supplier inline", e)
+                _inlineCreationState.update { it.copy(isCreatingSupplier = false) }
+            }
+        }
     }
 }

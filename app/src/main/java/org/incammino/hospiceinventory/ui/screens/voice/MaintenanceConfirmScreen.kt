@@ -59,6 +59,7 @@ import org.incammino.hospiceinventory.service.voice.MaintenanceConfirmData
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.ProductMatch
 import org.incammino.hospiceinventory.service.voice.SaveState
+import org.incammino.hospiceinventory.ui.components.InlineEntityCreator
 
 /**
  * Screen di conferma manutenzione.
@@ -76,6 +77,7 @@ fun MaintenanceConfirmScreen(
     onNavigateToProductSearch: () -> Unit
 ) {
     val saveState by viewModel.saveState.collectAsState()
+    val inlineCreationState by viewModel.inlineCreationState.collectAsState()
 
     // Stati editabili locali
     var selectedProduct by remember { mutableStateOf(initialData.productMatch) }
@@ -192,7 +194,14 @@ fun MaintenanceConfirmScreen(
             // Manutentore
             MaintainerSelectionCard(
                 match = selectedMaintainer,
-                onSelect = { selectedMaintainer = MaintainerMatch.Found(it) }
+                onSelect = { selectedMaintainer = MaintainerMatch.Found(it) },
+                isCreatingInline = inlineCreationState.isCreatingMaintainer,
+                wasCreatedInline = inlineCreationState.maintainerWasCreatedInline,
+                onCreateInline = { name, company ->
+                    viewModel.createMaintainerInline(name, company) { match ->
+                        selectedMaintainer = match
+                    }
+                }
             )
 
             // Data e Durata
@@ -432,7 +441,10 @@ private fun MaintenanceTypeSelector(
 @Composable
 private fun MaintainerSelectionCard(
     match: MaintainerMatch,
-    onSelect: (Maintainer) -> Unit
+    onSelect: (Maintainer) -> Unit,
+    isCreatingInline: Boolean = false,
+    wasCreatedInline: Boolean = false,
+    onCreateInline: (name: String, company: String?) -> Unit = { _, _ -> }
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -456,7 +468,16 @@ private fun MaintainerSelectionCard(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(match.maintainer.name)
+                        Column {
+                            Text(match.maintainer.name)
+                            if (match.maintainer.needsCompletion) {
+                                Text(
+                                    "Da completare",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -485,30 +506,28 @@ private fun MaintainerSelectionCard(
                 }
 
                 is MaintainerMatch.NotFound -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Warning,
-                            null,
-                            tint = MaterialTheme.colorScheme.tertiary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                buildString {
-                                    if (match.name.isNotBlank()) append(match.name)
-                                    if (match.company != null) {
-                                        if (isNotEmpty()) append(" - ")
-                                        append(match.company)
-                                    }
-                                }.ifBlank { "Non specificato" }
-                            )
-                            Text(
-                                "Non trovato nel sistema",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    val displayName = buildString {
+                        if (match.name.isNotBlank()) append(match.name)
+                        if (match.company != null && match.company != match.name) {
+                            if (isNotEmpty()) append(" - ")
+                            append(match.company)
                         }
+                    }
+
+                    if (displayName.isNotBlank()) {
+                        InlineEntityCreator(
+                            entityName = displayName,
+                            entityType = "Manutentore",
+                            onCreateClick = { onCreateInline(match.name, match.company) },
+                            isCreating = isCreatingInline,
+                            wasCreated = wasCreatedInline
+                        )
+                    } else {
+                        Text(
+                            "Manutentore non specificato",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 

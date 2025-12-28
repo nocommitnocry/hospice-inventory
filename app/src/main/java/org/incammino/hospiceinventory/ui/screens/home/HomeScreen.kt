@@ -45,7 +45,9 @@ fun HomeScreen(
     onNavigateToNewMaintainer: (Map<String, String>?) -> Unit = {},
     onNavigateToNewLocation: (Map<String, String>?) -> Unit = {},
     onNavigateToVoiceMaintenance: () -> Unit = {},
-    onNavigateToVoiceProduct: () -> Unit = {}
+    onNavigateToVoiceProduct: () -> Unit = {},
+    onNavigateToVoiceMaintainer: () -> Unit = {},
+    onNavigateToVoiceLocation: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -156,6 +158,27 @@ fun HomeScreen(
                     icon = Icons.Filled.AddBox,
                     label = "Nuovo Prodotto",
                     onClick = onNavigateToVoiceProduct,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Pulsanti Secondari Voice Dump Fase 3
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                SecondaryActionButton(
+                    icon = Icons.Filled.Engineering,
+                    label = "Manutentore",
+                    onClick = onNavigateToVoiceMaintainer,
+                    modifier = Modifier.weight(1f)
+                )
+                SecondaryActionButton(
+                    icon = Icons.Filled.Place,
+                    label = "Ubicazione",
+                    onClick = onNavigateToVoiceLocation,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -587,6 +610,35 @@ private fun MainActionButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge
+        )
+    }
+}
+
+/**
+ * Pulsante azione secondaria (meno prominente).
+ * Usato per "Nuovo Manutentore" e "Nuova Ubicazione" nel flusso Voice Dump Fase 3.
+ */
+@Composable
+private fun SecondaryActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(48.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium
         )
     }
 }

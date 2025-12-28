@@ -1,6 +1,8 @@
 package org.incammino.hospiceinventory.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -28,6 +30,12 @@ import org.incammino.hospiceinventory.ui.screens.voice.MaintenanceDataHolder
 import org.incammino.hospiceinventory.ui.screens.voice.VoiceProductScreen
 import org.incammino.hospiceinventory.ui.screens.voice.ProductConfirmScreen
 import org.incammino.hospiceinventory.ui.screens.voice.ProductDataHolder
+import org.incammino.hospiceinventory.ui.screens.voice.VoiceMaintainerScreen
+import org.incammino.hospiceinventory.ui.screens.voice.MaintainerConfirmScreen
+import org.incammino.hospiceinventory.ui.screens.voice.MaintainerDataHolder
+import org.incammino.hospiceinventory.ui.screens.voice.VoiceLocationScreen
+import org.incammino.hospiceinventory.ui.screens.voice.LocationConfirmScreen
+import org.incammino.hospiceinventory.ui.screens.voice.LocationDataHolder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -82,6 +90,12 @@ sealed class Screen(val route: String) {
     data object MaintenanceConfirm : Screen("maintenance/confirm")
     data object VoiceProduct : Screen("voice/product")
     data object ProductConfirm : Screen("product/confirm")
+
+    // Voice Dump Flow Fase 3 (28/12/2025)
+    data object VoiceMaintainer : Screen("voice/maintainer")
+    data object MaintainerConfirm : Screen("maintainer/confirm")
+    data object VoiceLocation : Screen("voice/location")
+    data object LocationConfirm : Screen("location/confirm")
 }
 
 /**
@@ -136,6 +150,12 @@ fun HospiceNavHost(
                 },
                 onNavigateToVoiceProduct = {
                     navController.navigate(Screen.VoiceProduct.route)
+                },
+                onNavigateToVoiceMaintainer = {
+                    navController.navigate(Screen.VoiceMaintainer.route)
+                },
+                onNavigateToVoiceLocation = {
+                    navController.navigate(Screen.VoiceLocation.route)
                 }
             )
         }
@@ -367,7 +387,9 @@ fun HospiceNavHost(
 
         // Maintenance Confirm - Scheda di conferma
         composable(Screen.MaintenanceConfirm.route) {
-            val data = MaintenanceDataHolder.consume()
+            // Usa remember per preservare i dati tra ricomposizioni
+            // consume() viene chiamato solo una volta alla prima composizione
+            val data = remember { MaintenanceDataHolder.consume() }
 
             if (data != null) {
                 MaintenanceConfirmScreen(
@@ -383,7 +405,10 @@ fun HospiceNavHost(
                 )
             } else {
                 // Se non ci sono dati, torna indietro
-                navController.popBackStack()
+                // Usa LaunchedEffect per evitare chiamate durante la composizione
+                LaunchedEffect(Unit) {
+                    navController.popBackStack()
+                }
             }
         }
 
@@ -401,7 +426,8 @@ fun HospiceNavHost(
 
         // Product Confirm - Scheda di conferma (Fase 2)
         composable(Screen.ProductConfirm.route) {
-            val data = ProductDataHolder.consume()
+            // Usa remember per preservare i dati tra ricomposizioni
+            val data = remember { ProductDataHolder.consume() }
 
             if (data != null) {
                 ProductConfirmScreen(
@@ -417,7 +443,81 @@ fun HospiceNavHost(
                 )
             } else {
                 // Se non ci sono dati, torna indietro
-                navController.popBackStack()
+                LaunchedEffect(Unit) {
+                    navController.popBackStack()
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // VOICE DUMP FLOW FASE 3 (28/12/2025)
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        // Voice Maintainer - Input vocale
+        composable(Screen.VoiceMaintainer.route) {
+            VoiceMaintainerScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToConfirm = { data ->
+                    // Salva data in holder condiviso
+                    MaintainerDataHolder.set(data)
+                    navController.navigate(Screen.MaintainerConfirm.route)
+                }
+            )
+        }
+
+        // Maintainer Confirm - Scheda di conferma
+        composable(Screen.MaintainerConfirm.route) {
+            // Usa remember per preservare i dati tra ricomposizioni
+            val data = remember { MaintainerDataHolder.consume() }
+
+            if (data != null) {
+                MaintainerConfirmScreen(
+                    initialData = data,
+                    onNavigateBack = { navController.popBackStack() },
+                    onSaved = {
+                        // Torna alla home dopo il salvataggio
+                        navController.popBackStack(Screen.Home.route, inclusive = false)
+                    }
+                )
+            } else {
+                // Se non ci sono dati, torna indietro
+                LaunchedEffect(Unit) {
+                    navController.popBackStack()
+                }
+            }
+        }
+
+        // Voice Location - Input vocale
+        composable(Screen.VoiceLocation.route) {
+            VoiceLocationScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToConfirm = { data ->
+                    // Salva data in holder condiviso
+                    LocationDataHolder.set(data)
+                    navController.navigate(Screen.LocationConfirm.route)
+                }
+            )
+        }
+
+        // Location Confirm - Scheda di conferma
+        composable(Screen.LocationConfirm.route) {
+            // Usa remember per preservare i dati tra ricomposizioni
+            val data = remember { LocationDataHolder.consume() }
+
+            if (data != null) {
+                LocationConfirmScreen(
+                    initialData = data,
+                    onNavigateBack = { navController.popBackStack() },
+                    onSaved = {
+                        // Torna alla home dopo il salvataggio
+                        navController.popBackStack(Screen.Home.route, inclusive = false)
+                    }
+                )
+            } else {
+                // Se non ci sono dati, torna indietro
+                LaunchedEffect(Unit) {
+                    navController.popBackStack()
+                }
             }
         }
     }

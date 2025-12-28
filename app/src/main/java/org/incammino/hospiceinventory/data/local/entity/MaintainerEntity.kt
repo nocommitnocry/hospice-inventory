@@ -46,7 +46,8 @@ data class MaintainerEntity(
     
     // ─── STATO ──────────────────────────────────────────────────────────────
     val isActive: Boolean = true,
-    
+    val needsCompletion: Boolean = false,  // Flag per entità create inline con dati minimi
+
     // ─── METADATA ───────────────────────────────────────────────────────────
     val createdAt: Instant,
     val updatedAt: Instant

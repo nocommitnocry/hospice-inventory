@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "7aa5a591d8d38582a78adc0787b174d0",
+    "identityHash": "eff97b95fde4e891d7be9de9620185aa",
     "entities": [
       {
         "tableName": "products",
@@ -246,7 +246,7 @@
       },
       {
         "tableName": "maintainers",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `email` TEXT, `phone` TEXT, `address` TEXT, `city` TEXT, `postalCode` TEXT, `province` TEXT, `vatNumber` TEXT, `contactPerson` TEXT, `contactPhone` TEXT, `contactEmail` TEXT, `specialization` TEXT, `isSupplier` INTEGER NOT NULL, `notes` TEXT, `isActive` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `email` TEXT, `phone` TEXT, `address` TEXT, `city` TEXT, `postalCode` TEXT, `province` TEXT, `vatNumber` TEXT, `contactPerson` TEXT, `contactPhone` TEXT, `contactEmail` TEXT, `specialization` TEXT, `isSupplier` INTEGER NOT NULL, `notes` TEXT, `isActive` INTEGER NOT NULL, `needsCompletion` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -341,6 +341,12 @@
           {
             "fieldPath": "isActive",
             "columnName": "isActive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "needsCompletion",
+            "columnName": "needsCompletion",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -581,7 +587,7 @@
       },
       {
         "tableName": "locations",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `parentId` TEXT, `address` TEXT, `coordinates` TEXT, `notes` TEXT, `isActive` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `type` TEXT, `parentId` TEXT, `floor` TEXT, `floorName` TEXT, `department` TEXT, `building` TEXT, `hasOxygenOutlet` INTEGER NOT NULL, `bedCount` INTEGER, `address` TEXT, `coordinates` TEXT, `notes` TEXT, `isActive` INTEGER NOT NULL, `needsCompletion` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -596,9 +602,51 @@
             "notNull": true
           },
           {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
             "fieldPath": "parentId",
             "columnName": "parentId",
             "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "floor",
+            "columnName": "floor",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "floorName",
+            "columnName": "floorName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "department",
+            "columnName": "department",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "building",
+            "columnName": "building",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "hasOxygenOutlet",
+            "columnName": "hasOxygenOutlet",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bedCount",
+            "columnName": "bedCount",
+            "affinity": "INTEGER",
             "notNull": false
           },
           {
@@ -622,6 +670,12 @@
           {
             "fieldPath": "isActive",
             "columnName": "isActive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "needsCompletion",
+            "columnName": "needsCompletion",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -662,6 +716,24 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_locations_parentId` ON `${TABLE_NAME}` (`parentId`)"
+          },
+          {
+            "name": "index_locations_floor",
+            "unique": false,
+            "columnNames": [
+              "floor"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_locations_floor` ON `${TABLE_NAME}` (`floor`)"
+          },
+          {
+            "name": "index_locations_department",
+            "unique": false,
+            "columnNames": [
+              "department"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_locations_department` ON `${TABLE_NAME}` (`department`)"
           },
           {
             "name": "index_locations_isActive",
@@ -1006,7 +1078,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7aa5a591d8d38582a78adc0787b174d0')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'eff97b95fde4e891d7be9de9620185aa')"
     ]
   }
 }
