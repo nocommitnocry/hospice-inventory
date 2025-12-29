@@ -94,13 +94,16 @@ class SearchViewModel @Inject constructor(
      */
     fun updateQuery(query: String) {
         _query.value = query
+        _uiState.update { it.copy(query = query) }
     }
 
     /**
      * Seleziona/deseleziona una categoria.
      */
     fun toggleCategory(category: String) {
-        _selectedCategory.value = if (_selectedCategory.value == category) null else category
+        val newCategory = if (_selectedCategory.value == category) null else category
+        _selectedCategory.value = newCategory
+        _uiState.update { it.copy(selectedCategory = newCategory) }
     }
 
     /**
@@ -109,5 +112,6 @@ class SearchViewModel @Inject constructor(
     fun clearSearch() {
         _query.value = ""
         _selectedCategory.value = null
+        _uiState.update { it.copy(query = "", selectedCategory = null) }
     }
 }

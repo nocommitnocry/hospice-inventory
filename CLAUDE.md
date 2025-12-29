@@ -718,6 +718,8 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
   - [x] Contesto arricchito (data corrente, lista manutentori)
   - [x] Ricerca interna durante task MaintenanceRegistration
   - [x] Temperature ridotta a 0.4 per maggiore precisione
+  - [x] Metodi estrazione Voice Dump (extractMaintenanceData, extractProductData, etc.)
+  - [x] Metodi update incrementali Voice Continue (updateProductFromVoice, etc.) (29/12/2025)
 - [x] **ConversationContext** - Contesto conversazionale multi-turno
 - [x] **ActiveTask** - Task multi-step (ProductCreation, MaintenanceRegistration, MaintainerCreation, LocationCreation, AssigneeCreation)
 - [x] **SpeakerInference** - Inferenza manutentore vs operatore
@@ -727,6 +729,10 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 #### Hardware Integration
 - [x] **BarcodeAnalyzer** - Analyzer CameraX con ML Kit per scansione codici
 - [x] **ScannerScreen** - Schermata scanner con preview camera e overlay mirino
+- [x] **BarcodeResultScreen** - Ricerca prodotto + azioni Found/NotFound (29/12/2025)
+
+#### Componenti Voice UI
+- [x] **VoiceContinueButton** - Input vocale incrementale nelle ConfirmScreen (29/12/2025)
 
 #### Dati Demo
 - [x] **SampleDataPopulator** - Dati di test per sviluppo
@@ -765,6 +771,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - [ ] Modifica schema Location per gerarchia
 
 **Fase 4: Polish** (dopo Fase 3)
+- [x] VoiceContinueButton per input incrementale (29/12/2025)
 - [ ] Gestione errori STT
 - [ ] Animazioni transizione
 - [ ] Test con utenti reali
@@ -779,6 +786,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 #### Hardware Integration
 - [x] **BarcodeScanner** - ML Kit Barcode Scanning (17/12/2024)
+- [x] **BarcodeResultScreen** - Flusso scansione → ricerca DB → azioni (29/12/2025)
 - [ ] **CameraCapture** - Foto prodotti con CameraX
 
 #### Comunicazione
@@ -1023,6 +1031,76 @@ val data = remember { MaintenanceDataHolder.consume() }
   - `MaintainerConfirmScreen`
   - `LocationConfirmScreen`
 - File: `Navigation.kt`
+
+### Sessione 29/12/2025 - VoiceContinueButton + Barcode Scanner
+
+**P17 - Bug SearchScreen TextField non accetta input** (CRITICO - RISOLTO)
+- Problema: Il TextField di SearchScreen non mostrava i caratteri digitati
+- Causa: `updateQuery()` aggiornava `_query.value` ma NON `_uiState.query`; il TextField leggeva `uiState.query` che restava vuoto
+- Fix: Sincronizzato `_uiState` in `updateQuery()`, `toggleCategory()`, `clearSearch()`
+```kotlin
+fun updateQuery(query: String) {
+    _query.value = query
+    _uiState.update { it.copy(query = query) }  // FIX
+}
+```
+- File: `SearchViewModel.kt`
+
+**F1 - VoiceContinueButton** (FEATURE - IMPLEMENTATA)
+- Feature: Bottone per input vocale incrementale nelle schermate di conferma
+- Permette di aggiungere dettagli a voce senza tornare indietro
+
+**File creati:**
+```
+ui/components/voice/VoiceContinueButton.kt - Componente con stati Idle/Listening/Processing
+```
+
+**ViewModels aggiornati:**
+- `ProductConfirmViewModel.kt` - +VoiceService, GeminiService, toggleVoiceInput(), onVoiceUpdate
+- `MaintenanceConfirmViewModel.kt` - idem
+- `MaintainerConfirmViewModel.kt` - idem
+- `LocationConfirmViewModel.kt` - idem
+
+**Screens aggiornati:**
+- `ProductConfirmScreen.kt` - +VoiceContinueButton dopo Note
+- `MaintenanceConfirmScreen.kt` - +VoiceContinueButton dopo Note
+
+**GeminiService - nuovi metodi:**
+```kotlin
+suspend fun updateProductFromVoice(currentData: String, newInput: String): Map<String, String>
+suspend fun updateMaintenanceFromVoice(currentData: String, newInput: String): Map<String, String>
+suspend fun updateMaintainerFromVoice(currentData: String, newInput: String): Map<String, String>
+suspend fun updateLocationFromVoice(currentData: String, newInput: String): Map<String, String>
+private fun parseJsonToMap(jsonString: String): Map<String, String>
+```
+
+**F2 - Barcode Scanner Integration** (FEATURE - IMPLEMENTATA)
+- Feature: Scansione barcode cerca automaticamente il prodotto nel DB
+- Se trovato: naviga a ProductDetail
+- Se non trovato: offre opzione di creare nuovo prodotto
+
+**File creati:**
+```
+ui/screens/scanner/BarcodeResultViewModel.kt - Cerca prodotto per barcode
+ui/screens/scanner/BarcodeResultScreen.kt    - UI con stati Found/NotFound/Error
+```
+
+**Navigation.kt aggiornato:**
+- Aggiunta route `Screen.BarcodeResult`
+- Scanner naviga a BarcodeResult (invece di Search)
+- BarcodeResult naviga a ProductDetail (found) o VoiceProduct (not found)
+
+**Flusso:**
+```
+HomeScreen [Scansiona]
+    → ScannerScreen
+        → onBarcodeScanned(barcode)
+    → BarcodeResultScreen
+        ├── Loading: cerca nel DB
+        ├── Found: naviga a ProductDetail
+        ├── NotFound: mostra opzione "Crea nuovo prodotto"
+        └── Error: mostra errore con retry
+```
 
 ---
 

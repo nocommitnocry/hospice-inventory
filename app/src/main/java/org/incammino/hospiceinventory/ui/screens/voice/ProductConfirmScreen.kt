@@ -63,6 +63,7 @@ import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.ProductConfirmData
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.ui.components.InlineEntityCreator
+import org.incammino.hospiceinventory.ui.components.voice.VoiceContinueButton
 import org.incammino.hospiceinventory.ui.theme.AlertWarning
 
 /**
@@ -82,6 +83,8 @@ fun ProductConfirmScreen(
 ) {
     val saveState by viewModel.saveState.collectAsState()
     val inlineCreationState by viewModel.inlineCreationState.collectAsState()
+    val voiceContinueState by viewModel.voiceContinueState.collectAsState()
+    val partialTranscript by viewModel.partialTranscript.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Stato locale per i campi editabili
@@ -98,6 +101,26 @@ fun ProductConfirmScreen(
         mutableIntStateOf(initialData.maintenanceFrequencyMonths ?: 0)
     }
     var notes by rememberSaveable { mutableStateOf("") }
+
+    // Configura callback per aggiornamenti da voce
+    LaunchedEffect(Unit) {
+        viewModel.onVoiceUpdate = { updates ->
+            updates["name"]?.let { name = it }
+            updates["model"]?.let { model = it }
+            updates["manufacturer"]?.let { manufacturer = it }
+            updates["serialNumber"]?.let { serialNumber = it }
+            updates["barcode"]?.let { barcode = it }
+            updates["category"]?.let { category = it }
+            updates["location"]?.let { locationName ->
+                locationMatch = LocationMatch.NotFound(locationName)
+            }
+            updates["warrantyMonths"]?.toIntOrNull()?.let { warrantyMonths = it }
+            updates["maintenanceFrequencyMonths"]?.toIntOrNull()?.let {
+                maintenanceFrequencyMonths = it
+            }
+            updates["notes"]?.let { notes = it }
+        }
+    }
 
     // Gestisci esito salvataggio
     LaunchedEffect(saveState) {
@@ -289,6 +312,15 @@ fun ProductConfirmScreen(
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
                 maxLines = 4
+            )
+
+            // Voice Continue Button
+            Spacer(modifier = Modifier.height(16.dp))
+
+            VoiceContinueButton(
+                state = voiceContinueState,
+                onTap = { viewModel.toggleVoiceInput() },
+                partialTranscript = partialTranscript
             )
 
             Spacer(modifier = Modifier.height(32.dp))

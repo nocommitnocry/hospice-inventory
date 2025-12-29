@@ -18,9 +18,13 @@ import org.incammino.hospiceinventory.data.repository.MaintainerRepository
 import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.domain.model.Maintenance
 import org.incammino.hospiceinventory.domain.model.MaintenanceType
+import org.incammino.hospiceinventory.service.voice.GeminiService
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.ProductMatch
 import org.incammino.hospiceinventory.service.voice.SaveState
+import org.incammino.hospiceinventory.service.voice.VoiceService
+import org.incammino.hospiceinventory.service.voice.VoiceState
+import org.incammino.hospiceinventory.ui.components.voice.VoiceContinueState
 import java.util.UUID
 import javax.inject.Inject
 
@@ -43,7 +47,9 @@ data class InlineCreationState(
 @HiltViewModel
 class MaintenanceConfirmViewModel @Inject constructor(
     private val maintenanceRepository: MaintenanceRepository,
-    private val maintainerRepository: MaintainerRepository
+    private val maintainerRepository: MaintainerRepository,
+    private val voiceService: VoiceService,
+    private val geminiService: GeminiService
 ) : ViewModel() {
 
     companion object {
@@ -55,6 +61,95 @@ class MaintenanceConfirmViewModel @Inject constructor(
 
     private val _inlineCreationState = MutableStateFlow(InlineCreationState())
     val inlineCreationState: StateFlow<InlineCreationState> = _inlineCreationState.asStateFlow()
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // VOICE CONTINUE STATE
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    private val _voiceContinueState = MutableStateFlow(VoiceContinueState.Idle)
+    val voiceContinueState: StateFlow<VoiceContinueState> = _voiceContinueState.asStateFlow()
+
+    private val _partialTranscript = MutableStateFlow("")
+    val partialTranscript: StateFlow<String> = _partialTranscript.asStateFlow()
+
+    /** Callback per aggiornamenti form dalla voce */
+    var onVoiceUpdate: ((Map<String, String>) -> Unit)? = null
+
+    init {
+        observeVoiceState()
+    }
+
+    private fun observeVoiceState() {
+        viewModelScope.launch {
+            voiceService.state.collect { state ->
+                when (state) {
+                    is VoiceState.Idle -> {
+                        _voiceContinueState.value = VoiceContinueState.Idle
+                        _partialTranscript.value = ""
+                    }
+                    is VoiceState.Listening -> {
+                        _voiceContinueState.value = VoiceContinueState.Listening
+                    }
+                    is VoiceState.Processing -> {
+                        _voiceContinueState.value = VoiceContinueState.Processing
+                    }
+                    is VoiceState.PartialResult -> {
+                        _partialTranscript.value = state.text
+                    }
+                    is VoiceState.Result -> {
+                        processAdditionalVoiceInput(state.text)
+                    }
+                    is VoiceState.Error -> {
+                        _voiceContinueState.value = VoiceContinueState.Idle
+                        Log.w(TAG, "Voice error: ${state.message}")
+                    }
+                    is VoiceState.Unavailable -> {
+                        _voiceContinueState.value = VoiceContinueState.Idle
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Toggle ascolto vocale.
+     */
+    fun toggleVoiceInput() {
+        when (_voiceContinueState.value) {
+            VoiceContinueState.Idle -> {
+                voiceService.initialize()
+                voiceService.startListening()
+            }
+            VoiceContinueState.Listening -> voiceService.stopListening()
+            VoiceContinueState.Processing -> { /* Ignora durante elaborazione */ }
+        }
+    }
+
+    /**
+     * Processa input vocale aggiuntivo e aggiorna i campi.
+     */
+    private fun processAdditionalVoiceInput(transcript: String) {
+        viewModelScope.launch {
+            _voiceContinueState.value = VoiceContinueState.Processing
+
+            try {
+                val updates = geminiService.updateMaintenanceFromVoice(
+                    currentData = "",
+                    newInput = transcript
+                )
+
+                if (updates.isNotEmpty()) {
+                    Log.d(TAG, "Voice updates: $updates")
+                    onVoiceUpdate?.invoke(updates)
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing voice input", e)
+            } finally {
+                _voiceContinueState.value = VoiceContinueState.Idle
+            }
+        }
+    }
 
     /**
      * Salva la manutenzione nel database.

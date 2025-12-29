@@ -22,9 +22,13 @@ import org.incammino.hospiceinventory.domain.model.Location
 import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.domain.model.MaintenanceFrequency
 import org.incammino.hospiceinventory.domain.model.Product
+import org.incammino.hospiceinventory.service.voice.GeminiService
 import org.incammino.hospiceinventory.service.voice.LocationMatch
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.SaveState
+import org.incammino.hospiceinventory.service.voice.VoiceService
+import org.incammino.hospiceinventory.service.voice.VoiceState
+import org.incammino.hospiceinventory.ui.components.voice.VoiceContinueState
 import java.util.UUID
 import javax.inject.Inject
 
@@ -43,6 +47,22 @@ data class ProductInlineCreationState(
 )
 
 /**
+ * Dati del form prodotto per voice continue.
+ */
+data class ProductFormData(
+    var name: String = "",
+    var model: String = "",
+    var manufacturer: String = "",
+    var serialNumber: String = "",
+    var barcode: String = "",
+    var category: String = "",
+    var location: String = "",
+    var warrantyMonths: Int? = null,
+    var maintenanceFrequencyMonths: Int? = null,
+    var notes: String = ""
+)
+
+/**
  * ViewModel per ProductConfirmScreen.
  * Gestisce il salvataggio del prodotto.
  *
@@ -52,7 +72,9 @@ data class ProductInlineCreationState(
 class ProductConfirmViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val locationRepository: LocationRepository,
-    private val maintainerRepository: MaintainerRepository
+    private val maintainerRepository: MaintainerRepository,
+    private val voiceService: VoiceService,
+    private val geminiService: GeminiService
 ) : ViewModel() {
 
     companion object {
@@ -64,6 +86,135 @@ class ProductConfirmViewModel @Inject constructor(
 
     private val _inlineCreationState = MutableStateFlow(ProductInlineCreationState())
     val inlineCreationState: StateFlow<ProductInlineCreationState> = _inlineCreationState.asStateFlow()
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // VOICE CONTINUE STATE
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    private val _voiceContinueState = MutableStateFlow(VoiceContinueState.Idle)
+    val voiceContinueState: StateFlow<VoiceContinueState> = _voiceContinueState.asStateFlow()
+
+    private val _partialTranscript = MutableStateFlow("")
+    val partialTranscript: StateFlow<String> = _partialTranscript.asStateFlow()
+
+    /** Callback per aggiornamenti form dalla voce */
+    var onVoiceUpdate: ((Map<String, String>) -> Unit)? = null
+
+    init {
+        observeVoiceState()
+    }
+
+    private fun observeVoiceState() {
+        viewModelScope.launch {
+            voiceService.state.collect { state ->
+                when (state) {
+                    is VoiceState.Idle -> {
+                        _voiceContinueState.value = VoiceContinueState.Idle
+                        _partialTranscript.value = ""
+                    }
+                    is VoiceState.Listening -> {
+                        _voiceContinueState.value = VoiceContinueState.Listening
+                    }
+                    is VoiceState.Processing -> {
+                        _voiceContinueState.value = VoiceContinueState.Processing
+                    }
+                    is VoiceState.PartialResult -> {
+                        _partialTranscript.value = state.text
+                    }
+                    is VoiceState.Result -> {
+                        processAdditionalVoiceInput(state.text)
+                    }
+                    is VoiceState.Error -> {
+                        _voiceContinueState.value = VoiceContinueState.Idle
+                        Log.w(TAG, "Voice error: ${state.message}")
+                    }
+                    is VoiceState.Unavailable -> {
+                        _voiceContinueState.value = VoiceContinueState.Idle
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Toggle ascolto vocale.
+     */
+    fun toggleVoiceInput() {
+        when (_voiceContinueState.value) {
+            VoiceContinueState.Idle -> {
+                voiceService.initialize()
+                voiceService.startListening()
+            }
+            VoiceContinueState.Listening -> voiceService.stopListening()
+            VoiceContinueState.Processing -> { /* Ignora durante elaborazione */ }
+        }
+    }
+
+    /**
+     * Processa input vocale aggiuntivo e aggiorna i campi.
+     */
+    private fun processAdditionalVoiceInput(transcript: String) {
+        viewModelScope.launch {
+            _voiceContinueState.value = VoiceContinueState.Processing
+
+            try {
+                // Chiedi a Gemini di estrarre aggiornamenti
+                val updates = geminiService.updateProductFromVoice(
+                    currentData = "", // La Screen passerà i dati attuali
+                    newInput = transcript
+                )
+
+                if (updates.isNotEmpty()) {
+                    Log.d(TAG, "Voice updates: $updates")
+                    onVoiceUpdate?.invoke(updates)
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing voice input", e)
+            } finally {
+                _voiceContinueState.value = VoiceContinueState.Idle
+            }
+        }
+    }
+
+    /**
+     * Processa input vocale con contesto dei dati attuali.
+     */
+    fun processVoiceWithContext(transcript: String, currentData: ProductFormData) {
+        viewModelScope.launch {
+            _voiceContinueState.value = VoiceContinueState.Processing
+
+            try {
+                val context = """
+                    Nome: ${currentData.name}
+                    Modello: ${currentData.model}
+                    Produttore: ${currentData.manufacturer}
+                    Seriale: ${currentData.serialNumber}
+                    Barcode: ${currentData.barcode}
+                    Categoria: ${currentData.category}
+                    Ubicazione: ${currentData.location}
+                    Garanzia: ${currentData.warrantyMonths ?: "non specificata"} mesi
+                    Frequenza manutenzione: ${currentData.maintenanceFrequencyMonths ?: "non specificata"} mesi
+                    Note: ${currentData.notes}
+                """.trimIndent()
+
+                val updates = geminiService.updateProductFromVoice(
+                    currentData = context,
+                    newInput = transcript
+                )
+
+                if (updates.isNotEmpty()) {
+                    Log.d(TAG, "Voice updates with context: $updates")
+                    onVoiceUpdate?.invoke(updates)
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing voice input with context", e)
+            } finally {
+                _voiceContinueState.value = VoiceContinueState.Idle
+            }
+        }
+    }
 
     /**
      * Salva il prodotto nel database.

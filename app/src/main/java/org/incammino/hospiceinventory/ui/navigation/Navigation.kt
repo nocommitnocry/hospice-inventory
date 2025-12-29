@@ -24,6 +24,7 @@ import org.incammino.hospiceinventory.ui.screens.location.LocationEditScreen
 import org.incammino.hospiceinventory.ui.screens.settings.SettingsScreen
 import org.incammino.hospiceinventory.ui.screens.settings.DataManagementScreen
 import org.incammino.hospiceinventory.ui.screens.scanner.ScannerScreen
+import org.incammino.hospiceinventory.ui.screens.scanner.BarcodeResultScreen
 import org.incammino.hospiceinventory.ui.screens.voice.VoiceMaintenanceScreen
 import org.incammino.hospiceinventory.ui.screens.voice.MaintenanceConfirmScreen
 import org.incammino.hospiceinventory.ui.screens.voice.MaintenanceDataHolder
@@ -83,6 +84,9 @@ sealed class Screen(val route: String) {
     // Scanner
     data object Scanner : Screen("scanner?reason={reason}") {
         fun createRoute(reason: String? = null) = "scanner?reason=${reason ?: ""}"
+    }
+    data object BarcodeResult : Screen("barcode_result/{barcode}") {
+        fun createRoute(barcode: String) = "barcode_result/$barcode"
     }
 
     // Voice Dump Flow (v2.0 - 26/12/2025)
@@ -362,9 +366,34 @@ fun HospiceNavHost(
                 reason = reason,
                 onNavigateBack = { navController.popBackStack() },
                 onBarcodeScanned = { barcode ->
-                    // Torna indietro e naviga alla ricerca con il barcode
-                    navController.popBackStack()
-                    navController.navigate(Screen.Search.createRoute(barcode))
+                    // Naviga al risultato barcode per cercare/creare prodotto
+                    navController.navigate(Screen.BarcodeResult.createRoute(barcode)) {
+                        popUpTo(Screen.Scanner.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // Barcode Result
+        composable(
+            route = Screen.BarcodeResult.route,
+            arguments = listOf(navArgument("barcode") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val barcode = backStackEntry.arguments?.getString("barcode") ?: ""
+            BarcodeResultScreen(
+                barcode = barcode,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToProduct = { productId ->
+                    navController.navigate(Screen.ProductDetail.createRoute(productId)) {
+                        popUpTo(Screen.BarcodeResult.route) { inclusive = true }
+                    }
+                },
+                onNavigateToCreateProduct = { barcodeValue ->
+                    // Naviga a VoiceProductScreen con il barcode come parametro
+                    // TODO: passare barcode come parametro a VoiceProductScreen
+                    navController.navigate(Screen.VoiceProduct.route) {
+                        popUpTo(Screen.BarcodeResult.route) { inclusive = true }
+                    }
                 }
             )
         }

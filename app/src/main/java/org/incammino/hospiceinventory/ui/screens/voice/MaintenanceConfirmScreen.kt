@@ -60,6 +60,7 @@ import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.ProductMatch
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.ui.components.InlineEntityCreator
+import org.incammino.hospiceinventory.ui.components.voice.VoiceContinueButton
 
 /**
  * Screen di conferma manutenzione.
@@ -78,6 +79,8 @@ fun MaintenanceConfirmScreen(
 ) {
     val saveState by viewModel.saveState.collectAsState()
     val inlineCreationState by viewModel.inlineCreationState.collectAsState()
+    val voiceContinueState by viewModel.voiceContinueState.collectAsState()
+    val partialTranscript by viewModel.partialTranscript.collectAsState()
 
     // Stati editabili locali
     var selectedProduct by remember { mutableStateOf(initialData.productMatch) }
@@ -90,6 +93,21 @@ fun MaintenanceConfirmScreen(
     var isWarranty by remember { mutableStateOf(initialData.isWarranty) }
     var date by remember { mutableStateOf(initialData.date) }
     var notes by remember { mutableStateOf("") }
+
+    // Configura callback per aggiornamenti da voce
+    LaunchedEffect(Unit) {
+        viewModel.onVoiceUpdate = { updates ->
+            updates["maintainerName"]?.let { name ->
+                selectedMaintainer = MaintainerMatch.NotFound(name, null)
+            }
+            updates["type"]?.let { typeStr ->
+                MaintenanceType.entries.find { it.name.equals(typeStr, ignoreCase = true) }
+                    ?.let { selectedType = it }
+            }
+            updates["notes"]?.let { notes = it }
+            updates["cost"]?.let { /* TODO: gestire costo */ }
+        }
+    }
 
     // Navigazione dopo salvataggio
     LaunchedEffect(saveState) {
@@ -244,6 +262,15 @@ fun MaintenanceConfirmScreen(
                 label = { Text("Note aggiuntive (opzionale)") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
+            )
+
+            // Voice Continue Button
+            Spacer(modifier = Modifier.height(16.dp))
+
+            VoiceContinueButton(
+                state = voiceContinueState,
+                onTap = { viewModel.toggleVoiceInput() },
+                partialTranscript = partialTranscript
             )
 
             // Errore salvataggio

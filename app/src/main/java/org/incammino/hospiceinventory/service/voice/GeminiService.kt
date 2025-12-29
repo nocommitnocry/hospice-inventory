@@ -2259,4 +2259,197 @@ class GeminiService @Inject constructor(
             }
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // VOICE CONTINUE - Aggiornamento incrementale campi da input vocale
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Aggiorna dati prodotto con nuovo input vocale incrementale.
+     *
+     * @param currentData Dati attuali del prodotto in formato stringa
+     * @param newInput Nuovo input vocale dell'utente
+     * @return Mappa con i campi da aggiornare
+     */
+    suspend fun updateProductFromVoice(
+        currentData: String,
+        newInput: String
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        val prompt = """
+            Sei un assistente per l'inventario di un hospice italiano.
+
+            L'utente sta completando la registrazione di un prodotto.
+
+            DATI ATTUALI:
+            $currentData
+
+            L'UTENTE HA AGGIUNTO:
+            "$newInput"
+
+            Analizza cosa ha detto l'utente e restituisci SOLO i campi da aggiornare in formato JSON.
+
+            Campi possibili: name, category, location, barcode, model, manufacturer,
+            serialNumber, warrantyMonths (numero intero), maintenanceFrequencyMonths (numero intero), notes
+
+            Se l'utente menziona una categoria, usa una di queste:
+            Elettromedicali, Arredi sanitari, Climatizzazione, Elettrico, Idraulica, Ausili, Altro
+
+            Esempio risposta:
+            {"category": "Elettromedicali", "location": "Piano 1 - Stanza 105"}
+
+            Rispondi SOLO con il JSON, nient'altro.
+        """.trimIndent()
+
+        try {
+            val response = generativeModel.generateContent(
+                content { text(prompt) }
+            )
+            val responseText = response.text?.trim() ?: "{}"
+            parseJsonToMap(responseText)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating product from voice", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * Aggiorna dati manutenzione con nuovo input vocale incrementale.
+     */
+    suspend fun updateMaintenanceFromVoice(
+        currentData: String,
+        newInput: String
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        val prompt = """
+            Sei un assistente per l'inventario di un hospice italiano.
+
+            L'utente sta registrando un intervento di manutenzione.
+
+            DATI ATTUALI:
+            $currentData
+
+            L'UTENTE HA AGGIUNTO:
+            "$newInput"
+
+            Analizza cosa ha detto e restituisci SOLO i campi da aggiornare in formato JSON.
+
+            Campi possibili: productName, maintainerName, type, outcome, notes, cost
+
+            Tipi manutenzione: PROGRAMMATA, VERIFICA, RIPARAZIONE, SOSTITUZIONE,
+            INSTALLAZIONE, COLLAUDO, DISMISSIONE, STRAORDINARIA
+
+            Esiti: RIPRISTINATO, PARZIALE, GUASTO, IN_ATTESA_RICAMBI,
+            IN_ATTESA_TECNICO, DISMESSO, SOSTITUITO, NON_NECESSARIO
+
+            Rispondi SOLO con il JSON.
+        """.trimIndent()
+
+        try {
+            val response = generativeModel.generateContent(
+                content { text(prompt) }
+            )
+            val responseText = response.text?.trim() ?: "{}"
+            parseJsonToMap(responseText)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating maintenance from voice", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * Aggiorna dati manutentore con nuovo input vocale incrementale.
+     */
+    suspend fun updateMaintainerFromVoice(
+        currentData: String,
+        newInput: String
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        val prompt = """
+            L'utente sta registrando un manutentore/fornitore.
+
+            DATI ATTUALI:
+            $currentData
+
+            L'UTENTE HA AGGIUNTO:
+            "$newInput"
+
+            Campi possibili: name, email, phone, address, city, postalCode, province,
+            vatNumber, contactPerson, specialization, isSupplier (true/false), notes
+
+            Per la partita IVA, rimuovi spazi e formatta come 11 cifre.
+            Per il telefono, rimuovi spazi extra.
+
+            Rispondi SOLO con JSON dei campi da aggiornare.
+        """.trimIndent()
+
+        try {
+            val response = generativeModel.generateContent(
+                content { text(prompt) }
+            )
+            val responseText = response.text?.trim() ?: "{}"
+            parseJsonToMap(responseText)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating maintainer from voice", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * Aggiorna dati ubicazione con nuovo input vocale incrementale.
+     */
+    suspend fun updateLocationFromVoice(
+        currentData: String,
+        newInput: String
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        val prompt = """
+            L'utente sta registrando un'ubicazione.
+
+            DATI ATTUALI:
+            $currentData
+
+            L'UTENTE HA AGGIUNTO:
+            "$newInput"
+
+            Campi possibili: name, type, building, floor, floorName,
+            department, hasOxygenOutlet (true/false), bedCount, notes
+
+            Tipi ubicazione: EDIFICIO, PIANO, STANZA, AREA
+
+            Rispondi SOLO con JSON dei campi da aggiornare.
+        """.trimIndent()
+
+        try {
+            val response = generativeModel.generateContent(
+                content { text(prompt) }
+            )
+            val responseText = response.text?.trim() ?: "{}"
+            parseJsonToMap(responseText)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating location from voice", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * Helper per parsing JSON response in Map<String, String>.
+     */
+    private fun parseJsonToMap(jsonString: String): Map<String, String> {
+        return try {
+            // Pulisci la risposta (rimuovi markdown se presente)
+            val cleaned = jsonString
+                .trim()
+                .removePrefix("```json")
+                .removePrefix("```")
+                .removeSuffix("```")
+                .trim()
+
+            // Parse con kotlinx.serialization
+            kotlinx.serialization.json.Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+            }.decodeFromString<Map<String, kotlinx.serialization.json.JsonElement>>(cleaned)
+                .mapValues { (_, value) -> value.toString().trim('"') }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing JSON to map: $jsonString", e)
+            emptyMap()
+        }
+    }
 }
