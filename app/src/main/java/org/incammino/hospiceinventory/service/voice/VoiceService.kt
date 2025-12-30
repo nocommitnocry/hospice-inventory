@@ -56,6 +56,20 @@ sealed class VoiceState {
     data object Unavailable : VoiceState()
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// LISTENING MODE - TAP-TO-STOP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Modalità di ascolto per il riconoscimento vocale.
+ */
+enum class ListeningMode {
+    /** Comportamento legacy: timeout automatico basato su silenzio */
+    AUTO_STOP,
+    /** Tap-to-stop: l'utente controlla quando fermare */
+    MANUAL_STOP
+}
+
 /**
  * Codici di errore del riconoscimento vocale.
  */
@@ -116,6 +130,13 @@ class VoiceService @Inject constructor(
         private val TRIGGER_WORDS = listOf(
             "fatto", "invia", "ok", "procedi", "basta", "stop", "fine"
         )
+
+        // TAP-TO-STOP: Costanti per modalità manuale
+        /** Numero massimo di errori consecutivi prima di segnalare problema critico */
+        private const val MAX_CONSECUTIVE_ERRORS = 3
+
+        /** Timeout assoluto di sicurezza: 5 minuti (se utente dimentica di premere Stop) */
+        private const val ABSOLUTE_TIMEOUT_MS = 5 * 60 * 1000L
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
@@ -126,6 +147,13 @@ class VoiceService @Inject constructor(
     private var silenceJob: Job? = null
     private var accumulatedText = StringBuilder()
     private var lastConfidence = 0f
+
+    // TAP-TO-STOP: Variabili per modalità manuale
+    private var currentMode = ListeningMode.AUTO_STOP
+    private var isManualListeningActive = false
+    private var consecutiveErrors = 0
+    private var listeningStartTime = 0L
+    private var absoluteTimeoutJob: Job? = null
 
     private val _state = MutableStateFlow<VoiceState>(VoiceState.Idle)
     val state: StateFlow<VoiceState> = _state.asStateFlow()
@@ -172,8 +200,9 @@ class VoiceService @Inject constructor(
 
     /**
      * Inizia l'ascolto vocale.
+     * @param mode Modalità di ascolto (AUTO_STOP per legacy, MANUAL_STOP per tap-to-stop)
      */
-    fun startListening() {
+    fun startListening(mode: ListeningMode = ListeningMode.AUTO_STOP) {
         if (!isInitialized) {
             initialize()
         }
@@ -187,9 +216,12 @@ class VoiceService @Inject constructor(
             return
         }
 
-        if (_state.value is VoiceState.Listening) {
-            Log.w(TAG, "Already listening, ignoring startListening()")
-            return
+        // TAP-TO-STOP: Gestisci già in ascolto
+        if (_state.value is VoiceState.Listening || _state.value is VoiceState.PartialResult) {
+            if (mode == ListeningMode.MANUAL_STOP && isManualListeningActive) {
+                Log.d(TAG, "Already listening in manual mode")
+                return
+            }
         }
 
         try {
@@ -199,15 +231,130 @@ class VoiceService @Inject constructor(
             accumulatedText.clear()
             lastConfidence = 0f
 
+            // TAP-TO-STOP: Setup modalità
+            currentMode = mode
+            consecutiveErrors = 0
+
+            if (mode == ListeningMode.MANUAL_STOP) {
+                isManualListeningActive = true
+                listeningStartTime = System.currentTimeMillis()
+
+                // Avvia timeout assoluto di sicurezza
+                absoluteTimeoutJob?.cancel()
+                absoluteTimeoutJob = scope.launch {
+                    delay(ABSOLUTE_TIMEOUT_MS)
+                    Log.w(TAG, "Absolute timeout reached - stopping manual listening")
+                    if (isManualListeningActive) {
+                        stopManualListening()
+                    }
+                }
+            }
+
             val intent = createRecognizerIntent()
             speechRecognizer?.startListening(intent)
             _state.value = VoiceState.Listening
-            Log.d(TAG, "Started listening")
+            Log.d(TAG, "Started listening in $mode mode")
         } catch (e: Exception) {
             Log.e(TAG, "Error starting listening", e)
             _state.value = VoiceState.Error("Errore avvio ascolto: ${e.message}", -1)
             onError?.invoke("Errore avvio ascolto", -1)
+            isManualListeningActive = false
+            absoluteTimeoutJob?.cancel()
         }
+    }
+
+    /**
+     * TAP-TO-STOP: Avvia ascolto in modalità manuale.
+     * L'utente controlla quando fermare chiamando stopManualListening().
+     */
+    fun startManualListening() {
+        consecutiveErrors = 0
+        isManualListeningActive = true
+        accumulatedText.clear()
+        startListening(ListeningMode.MANUAL_STOP)
+    }
+
+    /**
+     * TAP-TO-STOP: Ferma l'ascolto manuale e finalizza il risultato.
+     * Chiamato quando l'utente preme il pulsante STOP.
+     */
+    fun stopManualListening() {
+        Log.d(TAG, "stopManualListening() called")
+        isManualListeningActive = false
+        silenceJob?.cancel()
+        absoluteTimeoutJob?.cancel()
+
+        try {
+            speechRecognizer?.stopListening()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping", e)
+        }
+
+        // Finalizza con quello che abbiamo accumulato
+        val finalText = accumulatedText.toString().trim()
+        if (finalText.isNotEmpty()) {
+            Log.d(TAG, "Emitting final result from manual stop: $finalText")
+            emitFinalResult(finalText, lastConfidence)
+        } else {
+            Log.d(TAG, "No text accumulated, returning to Idle")
+            _state.value = VoiceState.Idle
+        }
+    }
+
+    /**
+     * TAP-TO-STOP: Riavvia l'ascolto senza notificare l'UI.
+     * Usato in MANUAL_STOP per continuare dopo onEndOfSpeech/onResults/onError.
+     */
+    private fun restartListeningQuietly() {
+        if (!isManualListeningActive) {
+            Log.d(TAG, "restartListeningQuietly: not in manual mode, skipping")
+            return
+        }
+
+        // Check timeout assoluto
+        if (System.currentTimeMillis() - listeningStartTime > ABSOLUTE_TIMEOUT_MS) {
+            Log.w(TAG, "Absolute timeout reached in restartListeningQuietly")
+            stopManualListening()
+            return
+        }
+
+        scope.launch {
+            delay(100) // Piccola pausa per evitare race condition
+            if (!isManualListeningActive) return@launch
+
+            try {
+                speechRecognizer?.cancel()
+                delay(50)
+                val intent = createRecognizerIntent()
+                speechRecognizer?.startListening(intent)
+                // NON cambiare state - rimane Listening/PartialResult
+                Log.d(TAG, "Restarted listening quietly")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error restarting quietly", e)
+                consecutiveErrors++
+                if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                    handleCriticalError(SpeechRecognizer.ERROR_CLIENT)
+                }
+            }
+        }
+    }
+
+    /**
+     * TAP-TO-STOP: Gestisce errori critici in modalità manuale.
+     */
+    private fun handleCriticalError(error: Int) {
+        Log.e(TAG, "Critical error in manual mode: $error (consecutive: $consecutiveErrors)")
+        isManualListeningActive = false
+        absoluteTimeoutJob?.cancel()
+
+        val message = if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            "Riconoscimento instabile. Prova a riavviare l'app."
+        } else {
+            VoiceErrorCodes.getErrorMessage(error)
+        }
+
+        _state.value = VoiceState.Error(message, error)
+        onError?.invoke(message, error)
     }
 
     /**
@@ -228,6 +375,10 @@ class VoiceService @Inject constructor(
      */
     fun cancel() {
         try {
+            // TAP-TO-STOP: Reset variabili modalità manuale
+            isManualListeningActive = false
+            absoluteTimeoutJob?.cancel()
+
             speechRecognizer?.cancel()
             _state.value = VoiceState.Idle
             Log.d(TAG, "Listening cancelled")
@@ -243,8 +394,13 @@ class VoiceService @Inject constructor(
     fun resetState() {
         silenceJob?.cancel()
         silenceJob = null
+        absoluteTimeoutJob?.cancel()
+        absoluteTimeoutJob = null
         accumulatedText.clear()
         lastConfidence = 0f
+        isManualListeningActive = false
+        consecutiveErrors = 0
+        currentMode = ListeningMode.AUTO_STOP
         _state.value = VoiceState.Idle
         Log.d(TAG, "State reset to Idle")
     }
@@ -255,15 +411,19 @@ class VoiceService @Inject constructor(
      */
     fun release() {
         try {
-            // P2 FIX: Cancella il job di silenzio e lo scope
+            // TAP-TO-STOP: Cancella jobs e reset variabili
+            isManualListeningActive = false
             silenceJob?.cancel()
             silenceJob = null
+            absoluteTimeoutJob?.cancel()
+            absoluteTimeoutJob = null
             scope.cancel()
 
             speechRecognizer?.destroy()
             speechRecognizer = null
             isInitialized = false
             accumulatedText.clear()
+            consecutiveErrors = 0
             _state.value = VoiceState.Idle
             Log.i(TAG, "VoiceService released")
         } catch (e: Exception) {
@@ -344,40 +504,70 @@ class VoiceService @Inject constructor(
             }
 
             override fun onEndOfSpeech() {
-                Log.d(TAG, "End of speech detected - starting silence timer")
-                _state.value = VoiceState.Processing
+                Log.d(TAG, "End of speech detected (mode: $currentMode)")
 
-                // P2 FIX: Invece di processare subito, avvia timer di attesa
-                // Questo permette all'utente di riprendere a parlare dopo una pausa
-                silenceJob?.cancel()
-                silenceJob = scope.launch {
-                    delay(SILENCE_DELAY_MS)
-                    // Se arriviamo qui, l'utente non ha ripreso a parlare
-                    Log.d(TAG, "Silence timeout reached - finalizing result")
-                    finalizeResult()
+                when (currentMode) {
+                    ListeningMode.AUTO_STOP -> {
+                        // Comportamento legacy con silence delay
+                        _state.value = VoiceState.Processing
+                        silenceJob?.cancel()
+                        silenceJob = scope.launch {
+                            delay(SILENCE_DELAY_MS)
+                            Log.d(TAG, "Silence timeout reached - finalizing result")
+                            finalizeResult()
+                        }
+                    }
+                    ListeningMode.MANUAL_STOP -> {
+                        // TAP-TO-STOP: Non fare nulla! L'utente decide quando fermare.
+                        Log.d(TAG, "Manual mode - waiting for user to stop")
+                        // Riavvia ascolto automaticamente per continuare
+                        restartListeningQuietly()
+                    }
                 }
             }
 
             override fun onError(error: Int) {
                 val errorMessage = VoiceErrorCodes.getErrorMessage(error)
-                Log.w(TAG, "Recognition error: $error - $errorMessage")
+                Log.w(TAG, "Recognition error: $error - $errorMessage (mode: $currentMode)")
 
                 // P2 FIX: Cancella il timer
                 silenceJob?.cancel()
                 silenceJob = null
 
-                // Alcuni errori non sono critici
-                val isCritical = error !in listOf(
-                    SpeechRecognizer.ERROR_NO_MATCH,
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT
-                )
+                when (currentMode) {
+                    ListeningMode.AUTO_STOP -> {
+                        // Comportamento legacy
+                        val isCritical = error !in listOf(
+                            SpeechRecognizer.ERROR_NO_MATCH,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                        )
+                        _state.value = VoiceState.Error(errorMessage, error)
+                        onError?.invoke(errorMessage, error)
+                        if (!isCritical) {
+                            _state.value = VoiceState.Idle
+                        }
+                    }
+                    ListeningMode.MANUAL_STOP -> {
+                        // TAP-TO-STOP: Errori recuperabili → riavvia silenziosamente
+                        val isRecoverable = error in listOf(
+                            SpeechRecognizer.ERROR_NO_MATCH,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                            SpeechRecognizer.ERROR_CLIENT
+                        )
 
-                _state.value = VoiceState.Error(errorMessage, error)
-                onError?.invoke(errorMessage, error)
-
-                // Reset a Idle dopo errore non critico
-                if (!isCritical) {
-                    _state.value = VoiceState.Idle
+                        if (isRecoverable && isManualListeningActive) {
+                            Log.d(TAG, "Recoverable error in manual mode, restarting...")
+                            consecutiveErrors++
+                            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                                handleCriticalError(error)
+                            } else {
+                                restartListeningQuietly()
+                            }
+                        } else {
+                            // Errore critico
+                            handleCriticalError(error)
+                        }
+                    }
                 }
             }
 
@@ -386,13 +576,22 @@ class VoiceService @Inject constructor(
                 val confidences = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
 
                 if (matches.isNullOrEmpty()) {
-                    Log.w(TAG, "No results")
-                    // Se abbiamo testo accumulato, usalo comunque
-                    if (accumulatedText.isNotEmpty()) {
-                        finalizeResult()
-                    } else {
-                        _state.value = VoiceState.Error("Nessun risultato", SpeechRecognizer.ERROR_NO_MATCH)
-                        onError?.invoke("Nessun risultato", SpeechRecognizer.ERROR_NO_MATCH)
+                    Log.w(TAG, "No results (mode: $currentMode)")
+                    when (currentMode) {
+                        ListeningMode.AUTO_STOP -> {
+                            if (accumulatedText.isNotEmpty()) {
+                                finalizeResult()
+                            } else {
+                                _state.value = VoiceState.Error("Nessun risultato", SpeechRecognizer.ERROR_NO_MATCH)
+                                onError?.invoke("Nessun risultato", SpeechRecognizer.ERROR_NO_MATCH)
+                            }
+                        }
+                        ListeningMode.MANUAL_STOP -> {
+                            // In manual mode, nessun risultato = riprova
+                            if (isManualListeningActive) {
+                                restartListeningQuietly()
+                            }
+                        }
                     }
                     return
                 }
@@ -400,32 +599,41 @@ class VoiceService @Inject constructor(
                 val bestMatch = matches[0]
                 val confidence = confidences?.getOrNull(0) ?: 0f
 
-                Log.i(TAG, "Result: '$bestMatch' (confidence: $confidence)")
+                Log.i(TAG, "Result: '$bestMatch' (confidence: $confidence, mode: $currentMode)")
 
-                // P2 FIX: Accumula il testo invece di processarlo subito
+                // Accumula il testo
                 accumulatedText.append(" ").append(bestMatch)
                 lastConfidence = confidence
 
-                // P2 FIX: Controlla se contiene una trigger word
-                val normalizedText = bestMatch.lowercase().trim()
-                val hasTriggerWord = TRIGGER_WORDS.any { trigger ->
-                    normalizedText.endsWith(trigger) ||
-                    normalizedText.endsWith("$trigger.") ||
-                    normalizedText == trigger
-                }
+                when (currentMode) {
+                    ListeningMode.AUTO_STOP -> {
+                        // P2 FIX: Controlla se contiene una trigger word
+                        val normalizedText = bestMatch.lowercase().trim()
+                        val hasTriggerWord = TRIGGER_WORDS.any { trigger ->
+                            normalizedText.endsWith(trigger) ||
+                            normalizedText.endsWith("$trigger.") ||
+                            normalizedText == trigger
+                        }
 
-                if (hasTriggerWord) {
-                    Log.d(TAG, "P2: Trigger word detected - processing immediately")
-                    silenceJob?.cancel()
-                    silenceJob = null
-
-                    // Rimuovi la trigger word dal testo finale
-                    val cleanedText = removeTriggerWord(accumulatedText.toString().trim())
-                    emitFinalResult(cleanedText, confidence)
-                } else {
-                    // Mostra risultato parziale mentre aspettiamo
-                    _state.value = VoiceState.PartialResult(accumulatedText.toString().trim())
-                    onPartialResult?.invoke(accumulatedText.toString().trim())
+                        if (hasTriggerWord) {
+                            Log.d(TAG, "P2: Trigger word detected - processing immediately")
+                            silenceJob?.cancel()
+                            silenceJob = null
+                            val cleanedText = removeTriggerWord(accumulatedText.toString().trim())
+                            emitFinalResult(cleanedText, confidence)
+                        } else {
+                            // Mostra risultato parziale mentre aspettiamo
+                            _state.value = VoiceState.PartialResult(accumulatedText.toString().trim())
+                            onPartialResult?.invoke(accumulatedText.toString().trim())
+                        }
+                    }
+                    ListeningMode.MANUAL_STOP -> {
+                        // TAP-TO-STOP: Notifica UI del testo accumulato e continua
+                        _state.value = VoiceState.PartialResult(accumulatedText.toString().trim())
+                        onPartialResult?.invoke(accumulatedText.toString().trim())
+                        // Riavvia per continuare ad ascoltare
+                        restartListeningQuietly()
+                    }
                 }
             }
 

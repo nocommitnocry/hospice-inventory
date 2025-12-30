@@ -56,6 +56,7 @@ import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.domain.model.MaintenanceType
 import org.incammino.hospiceinventory.domain.model.Product
 import org.incammino.hospiceinventory.service.voice.MaintenanceConfirmData
+import org.incammino.hospiceinventory.service.voice.MaintenanceFormData
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.ProductMatch
 import org.incammino.hospiceinventory.service.voice.SaveState
@@ -96,6 +97,33 @@ fun MaintenanceConfirmScreen(
 
     // Configura callback per aggiornamenti da voce
     LaunchedEffect(Unit) {
+        // Callback per ricevere il transcript e passare i dati attuali del form
+        viewModel.onProcessVoiceWithContext = { transcript ->
+            // Costruisci FormData con i valori ATTUALI (incluse modifiche manuali)
+            val currentFormData = MaintenanceFormData(
+                productName = when (selectedProduct) {
+                    is ProductMatch.Found -> (selectedProduct as ProductMatch.Found).product.name
+                    is ProductMatch.NotFound -> (selectedProduct as ProductMatch.NotFound).searchTerms
+                    is ProductMatch.Ambiguous -> (selectedProduct as ProductMatch.Ambiguous).searchTerms
+                },
+                maintainerName = when (selectedMaintainer) {
+                    is MaintainerMatch.Found -> (selectedMaintainer as MaintainerMatch.Found).maintainer.name
+                    is MaintainerMatch.NotFound -> (selectedMaintainer as MaintainerMatch.NotFound).name
+                    is MaintainerMatch.Ambiguous -> (selectedMaintainer as MaintainerMatch.Ambiguous).query
+                    is MaintainerMatch.SelfReported -> "Operatore"
+                },
+                type = selectedType?.label ?: "",
+                description = description,
+                durationMinutes = durationMinutes.toIntOrNull(),
+                isWarranty = isWarranty,
+                date = date.toString(),
+                notes = notes
+            )
+            // Chiama il ViewModel con transcript E contesto
+            viewModel.processVoiceWithContext(transcript, currentFormData)
+        }
+
+        // Callback per applicare gli aggiornamenti ai campi
         viewModel.onVoiceUpdate = { updates ->
             updates["maintainerName"]?.let { name ->
                 selectedMaintainer = MaintainerMatch.NotFound(name, null)
@@ -104,8 +132,9 @@ fun MaintenanceConfirmScreen(
                 MaintenanceType.entries.find { it.name.equals(typeStr, ignoreCase = true) }
                     ?.let { selectedType = it }
             }
+            updates["description"]?.let { description = it }
+            updates["durationMinutes"]?.toIntOrNull()?.let { durationMinutes = it.toString() }
             updates["notes"]?.let { notes = it }
-            updates["cost"]?.let { /* TODO: gestire costo */ }
         }
     }
 

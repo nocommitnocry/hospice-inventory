@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.incammino.hospiceinventory.domain.model.LocationType
 import org.incammino.hospiceinventory.service.voice.LocationConfirmData
+import org.incammino.hospiceinventory.service.voice.LocationFormData
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.ui.theme.AlertWarning
 
@@ -83,6 +84,36 @@ fun LocationConfirmScreen(
     var hasOxygenOutlet by rememberSaveable { mutableStateOf(initialData.hasOxygenOutlet) }
     var bedCount by rememberSaveable { mutableIntStateOf(initialData.bedCount ?: 0) }
     var notes by rememberSaveable { mutableStateOf(initialData.notes) }
+
+    // Configura callback per aggiornamenti da voce
+    LaunchedEffect(Unit) {
+        viewModel.onProcessVoiceWithContext = { transcript ->
+            val currentFormData = LocationFormData(
+                name = name,
+                type = type,
+                buildingName = buildingName,
+                floorCode = floorCode,
+                floorName = floorName,
+                department = department,
+                hasOxygenOutlet = hasOxygenOutlet,
+                bedCount = bedCount.takeIf { it > 0 },
+                notes = notes
+            )
+            viewModel.processVoiceWithContext(transcript, currentFormData)
+        }
+
+        viewModel.onVoiceUpdate = { updates ->
+            updates["name"]?.let { name = it }
+            updates["type"]?.let { type = it }
+            updates["buildingName"]?.let { buildingName = it }
+            updates["floorCode"]?.let { floorCode = it }
+            updates["floorName"]?.let { floorName = it }
+            updates["department"]?.let { department = it }
+            updates["hasOxygenOutlet"]?.lowercase()?.let { hasOxygenOutlet = it == "true" || it == "sì" }
+            updates["bedCount"]?.toIntOrNull()?.let { bedCount = it }
+            updates["notes"]?.let { notes = it }
+        }
+    }
 
     // Gestisci esito salvataggio
     LaunchedEffect(saveState) {

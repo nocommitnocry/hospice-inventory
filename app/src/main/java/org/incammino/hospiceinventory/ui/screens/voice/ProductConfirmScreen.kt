@@ -61,6 +61,7 @@ import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.service.voice.LocationMatch
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.ProductConfirmData
+import org.incammino.hospiceinventory.service.voice.ProductFormData
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.ui.components.InlineEntityCreator
 import org.incammino.hospiceinventory.ui.components.voice.VoiceContinueButton
@@ -104,6 +105,35 @@ fun ProductConfirmScreen(
 
     // Configura callback per aggiornamenti da voce
     LaunchedEffect(Unit) {
+        // Callback per ricevere il transcript e passare i dati attuali del form
+        viewModel.onProcessVoiceWithContext = { transcript ->
+            // Costruisci FormData con i valori ATTUALI (incluse modifiche manuali)
+            val currentFormData = ProductFormData(
+                name = name,
+                model = model,
+                manufacturer = manufacturer,
+                serialNumber = serialNumber,
+                barcode = barcode,
+                category = category,
+                location = when (locationMatch) {
+                    is LocationMatch.Found -> (locationMatch as LocationMatch.Found).location.name
+                    is LocationMatch.NotFound -> (locationMatch as LocationMatch.NotFound).searchTerms
+                    is LocationMatch.Ambiguous -> (locationMatch as LocationMatch.Ambiguous).searchTerms
+                },
+                supplier = when (supplierMatch) {
+                    is MaintainerMatch.Found -> (supplierMatch as MaintainerMatch.Found).maintainer.name
+                    is MaintainerMatch.NotFound -> (supplierMatch as MaintainerMatch.NotFound).name
+                    else -> ""
+                },
+                warrantyMonths = warrantyMonths.takeIf { it > 0 },
+                maintenanceFrequencyMonths = maintenanceFrequencyMonths.takeIf { it > 0 },
+                notes = notes
+            )
+            // Chiama il ViewModel con transcript E contesto
+            viewModel.processVoiceWithContext(transcript, currentFormData)
+        }
+
+        // Callback per applicare gli aggiornamenti ai campi
         viewModel.onVoiceUpdate = { updates ->
             updates["name"]?.let { name = it }
             updates["model"]?.let { model = it }

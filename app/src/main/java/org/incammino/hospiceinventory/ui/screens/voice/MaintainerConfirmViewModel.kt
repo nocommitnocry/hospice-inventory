@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import org.incammino.hospiceinventory.data.repository.MaintainerRepository
 import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.service.voice.GeminiService
+import org.incammino.hospiceinventory.service.voice.MaintainerFormData
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.service.voice.VoiceService
 import org.incammino.hospiceinventory.service.voice.VoiceState
@@ -46,6 +47,7 @@ class MaintainerConfirmViewModel @Inject constructor(
     val partialTranscript: StateFlow<String> = _partialTranscript.asStateFlow()
 
     var onVoiceUpdate: ((Map<String, String>) -> Unit)? = null
+    var onProcessVoiceWithContext: ((String) -> Unit)? = null
 
     init {
         observeVoiceState()
@@ -82,15 +84,55 @@ class MaintainerConfirmViewModel @Inject constructor(
     }
 
     private fun processAdditionalVoiceInput(transcript: String) {
+        val callback = onProcessVoiceWithContext
+        if (callback != null) {
+            callback.invoke(transcript)
+        } else {
+            Log.w(TAG, "onProcessVoiceWithContext not set, processing without context")
+            viewModelScope.launch {
+                _voiceContinueState.value = VoiceContinueState.Processing
+                try {
+                    val updates = geminiService.updateMaintainerFromVoice("", transcript)
+                    if (updates.isNotEmpty()) {
+                        onVoiceUpdate?.invoke(updates)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing voice input", e)
+                } finally {
+                    _voiceContinueState.value = VoiceContinueState.Idle
+                }
+            }
+        }
+    }
+
+    fun processVoiceWithContext(transcript: String, currentData: MaintainerFormData) {
         viewModelScope.launch {
             _voiceContinueState.value = VoiceContinueState.Processing
             try {
-                val updates = geminiService.updateMaintainerFromVoice("", transcript)
+                val context = """
+                    Nome azienda: ${currentData.name}
+                    Partita IVA: ${currentData.vatNumber}
+                    Specializzazione: ${currentData.specialization}
+                    Email: ${currentData.email}
+                    Telefono: ${currentData.phone}
+                    Referente: ${currentData.contactPerson}
+                    Indirizzo: ${currentData.street}
+                    Città: ${currentData.city}
+                    CAP: ${currentData.postalCode}
+                    Provincia: ${currentData.province}
+                    È fornitore: ${if (currentData.isSupplier) "sì" else "no"}
+                    Note: ${currentData.notes}
+                """.trimIndent()
+
+                Log.d(TAG, "Processing voice with context:\n$context\nNew input: $transcript")
+
+                val updates = geminiService.updateMaintainerFromVoice(context, transcript)
                 if (updates.isNotEmpty()) {
+                    Log.d(TAG, "Voice updates with context: $updates")
                     onVoiceUpdate?.invoke(updates)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing voice input", e)
+                Log.e(TAG, "Error processing voice input with context", e)
             } finally {
                 _voiceContinueState.value = VoiceContinueState.Idle
             }

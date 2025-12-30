@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.incammino.hospiceinventory.service.voice.MaintainerConfirmData
+import org.incammino.hospiceinventory.service.voice.MaintainerFormData
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.ui.theme.AlertWarning
 
@@ -80,6 +81,42 @@ fun MaintainerConfirmScreen(
     var province by rememberSaveable { mutableStateOf(initialData.province) }
     var isSupplier by rememberSaveable { mutableStateOf(initialData.isSupplier) }
     var notes by rememberSaveable { mutableStateOf(initialData.notes) }
+
+    // Configura callback per aggiornamenti da voce
+    LaunchedEffect(Unit) {
+        viewModel.onProcessVoiceWithContext = { transcript ->
+            val currentFormData = MaintainerFormData(
+                name = name,
+                vatNumber = vatNumber,
+                specialization = specialization,
+                email = email,
+                phone = phone,
+                contactPerson = contactPerson,
+                street = street,
+                city = city,
+                postalCode = postalCode,
+                province = province,
+                isSupplier = isSupplier,
+                notes = notes
+            )
+            viewModel.processVoiceWithContext(transcript, currentFormData)
+        }
+
+        viewModel.onVoiceUpdate = { updates ->
+            updates["name"]?.let { name = it }
+            updates["vatNumber"]?.let { vatNumber = it }
+            updates["specialization"]?.let { specialization = it }
+            updates["email"]?.let { email = it }
+            updates["phone"]?.let { phone = it }
+            updates["contactPerson"]?.let { contactPerson = it }
+            updates["street"]?.let { street = it }
+            updates["city"]?.let { city = it }
+            updates["postalCode"]?.let { postalCode = it }
+            updates["province"]?.let { province = it }
+            updates["isSupplier"]?.lowercase()?.let { isSupplier = it == "true" || it == "sì" }
+            updates["notes"]?.let { notes = it }
+        }
+    }
 
     // Gestisci esito salvataggio
     LaunchedEffect(saveState) {

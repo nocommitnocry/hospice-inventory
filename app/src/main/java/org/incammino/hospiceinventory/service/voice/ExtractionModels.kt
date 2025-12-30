@@ -419,6 +419,76 @@ data class LocationConfirmData(
     val warnings: List<String>
 )
 
+// ==================== FORM DATA PER VOICE CONTINUE ====================
+
+/**
+ * Stato attuale del form prodotto per context vocale.
+ * Usato da VoiceContinueButton per preservare dati inseriti manualmente.
+ */
+data class ProductFormData(
+    val name: String = "",
+    val model: String = "",
+    val manufacturer: String = "",
+    val serialNumber: String = "",
+    val barcode: String = "",
+    val category: String = "",
+    val location: String = "",
+    val supplier: String = "",
+    val warrantyMonths: Int? = null,
+    val maintenanceFrequencyMonths: Int? = null,
+    val notes: String = ""
+)
+
+/**
+ * Stato attuale del form manutenzione per context vocale.
+ * Usato da VoiceContinueButton per preservare dati inseriti manualmente.
+ */
+data class MaintenanceFormData(
+    val productName: String = "",
+    val maintainerName: String = "",
+    val type: String = "",
+    val description: String = "",
+    val durationMinutes: Int? = null,
+    val isWarranty: Boolean = false,
+    val date: String = "",
+    val notes: String = ""
+)
+
+/**
+ * Stato attuale del form manutentore per context vocale.
+ * Usato da VoiceContinueButton per preservare dati inseriti manualmente.
+ */
+data class MaintainerFormData(
+    val name: String = "",
+    val vatNumber: String = "",
+    val specialization: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val contactPerson: String = "",
+    val street: String = "",
+    val city: String = "",
+    val postalCode: String = "",
+    val province: String = "",
+    val isSupplier: Boolean = false,
+    val notes: String = ""
+)
+
+/**
+ * Stato attuale del form ubicazione per context vocale.
+ * Usato da VoiceContinueButton per preservare dati inseriti manualmente.
+ */
+data class LocationFormData(
+    val name: String = "",
+    val type: String = "",
+    val buildingName: String = "",
+    val floorCode: String = "",
+    val floorName: String = "",
+    val department: String = "",
+    val hasOxygenOutlet: Boolean = false,
+    val bedCount: Int? = null,
+    val notes: String = ""
+)
+
 // ==================== STATI SALVATAGGIO ====================
 
 /**

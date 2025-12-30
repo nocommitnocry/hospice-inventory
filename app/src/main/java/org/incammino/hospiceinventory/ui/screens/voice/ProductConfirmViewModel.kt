@@ -25,6 +25,7 @@ import org.incammino.hospiceinventory.domain.model.Product
 import org.incammino.hospiceinventory.service.voice.GeminiService
 import org.incammino.hospiceinventory.service.voice.LocationMatch
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
+import org.incammino.hospiceinventory.service.voice.ProductFormData
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.service.voice.VoiceService
 import org.incammino.hospiceinventory.service.voice.VoiceState
@@ -44,22 +45,6 @@ data class ProductInlineCreationState(
     val supplierWasCreatedInline: Boolean = false,
     val createdSupplierId: String? = null,
     val createdSupplierName: String? = null
-)
-
-/**
- * Dati del form prodotto per voice continue.
- */
-data class ProductFormData(
-    var name: String = "",
-    var model: String = "",
-    var manufacturer: String = "",
-    var serialNumber: String = "",
-    var barcode: String = "",
-    var category: String = "",
-    var location: String = "",
-    var warrantyMonths: Int? = null,
-    var maintenanceFrequencyMonths: Int? = null,
-    var notes: String = ""
 )
 
 /**
@@ -99,6 +84,12 @@ class ProductConfirmViewModel @Inject constructor(
 
     /** Callback per aggiornamenti form dalla voce */
     var onVoiceUpdate: ((Map<String, String>) -> Unit)? = null
+
+    /**
+     * Callback invocato quando il transcript è pronto.
+     * La Screen deve rispondere chiamando processVoiceWithContext con i dati attuali del form.
+     */
+    var onProcessVoiceWithContext: ((String) -> Unit)? = null
 
     init {
         observeVoiceState()
@@ -151,28 +142,34 @@ class ProductConfirmViewModel @Inject constructor(
     }
 
     /**
-     * Processa input vocale aggiuntivo e aggiorna i campi.
+     * Processa input vocale aggiuntivo.
+     * Invoca il callback onProcessVoiceWithContext per permettere alla Screen
+     * di passare i dati attuali del form (inclusi quelli inseriti manualmente).
      */
     private fun processAdditionalVoiceInput(transcript: String) {
-        viewModelScope.launch {
-            _voiceContinueState.value = VoiceContinueState.Processing
-
-            try {
-                // Chiedi a Gemini di estrarre aggiornamenti
-                val updates = geminiService.updateProductFromVoice(
-                    currentData = "", // La Screen passerà i dati attuali
-                    newInput = transcript
-                )
-
-                if (updates.isNotEmpty()) {
-                    Log.d(TAG, "Voice updates: $updates")
-                    onVoiceUpdate?.invoke(updates)
+        // Invoca il callback - la Screen risponderà chiamando processVoiceWithContext
+        // con i dati attuali del form (che possono includere modifiche manuali)
+        val callback = onProcessVoiceWithContext
+        if (callback != null) {
+            callback.invoke(transcript)
+        } else {
+            // Fallback: processa senza contesto (comportamento legacy)
+            Log.w(TAG, "onProcessVoiceWithContext not set, processing without context")
+            viewModelScope.launch {
+                _voiceContinueState.value = VoiceContinueState.Processing
+                try {
+                    val updates = geminiService.updateProductFromVoice(
+                        currentData = "",
+                        newInput = transcript
+                    )
+                    if (updates.isNotEmpty()) {
+                        onVoiceUpdate?.invoke(updates)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing voice input", e)
+                } finally {
+                    _voiceContinueState.value = VoiceContinueState.Idle
                 }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing voice input", e)
-            } finally {
-                _voiceContinueState.value = VoiceContinueState.Idle
             }
         }
     }
@@ -193,10 +190,13 @@ class ProductConfirmViewModel @Inject constructor(
                     Barcode: ${currentData.barcode}
                     Categoria: ${currentData.category}
                     Ubicazione: ${currentData.location}
-                    Garanzia: ${currentData.warrantyMonths ?: "non specificata"} mesi
-                    Frequenza manutenzione: ${currentData.maintenanceFrequencyMonths ?: "non specificata"} mesi
+                    Fornitore: ${currentData.supplier}
+                    Garanzia: ${currentData.warrantyMonths?.let { "$it mesi" } ?: "non specificata"}
+                    Frequenza manutenzione: ${currentData.maintenanceFrequencyMonths?.let { "$it mesi" } ?: "non specificata"}
                     Note: ${currentData.notes}
                 """.trimIndent()
+
+                Log.d(TAG, "Processing voice with context:\n$context\nNew input: $transcript")
 
                 val updates = geminiService.updateProductFromVoice(
                     currentData = context,

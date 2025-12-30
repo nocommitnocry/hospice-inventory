@@ -19,6 +19,7 @@ import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.domain.model.Maintenance
 import org.incammino.hospiceinventory.domain.model.MaintenanceType
 import org.incammino.hospiceinventory.service.voice.GeminiService
+import org.incammino.hospiceinventory.service.voice.MaintenanceFormData
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
 import org.incammino.hospiceinventory.service.voice.ProductMatch
 import org.incammino.hospiceinventory.service.voice.SaveState
@@ -75,6 +76,12 @@ class MaintenanceConfirmViewModel @Inject constructor(
     /** Callback per aggiornamenti form dalla voce */
     var onVoiceUpdate: ((Map<String, String>) -> Unit)? = null
 
+    /**
+     * Callback invocato quando il transcript è pronto.
+     * La Screen deve rispondere chiamando processVoiceWithContext con i dati attuali del form.
+     */
+    var onProcessVoiceWithContext: ((String) -> Unit)? = null
+
     init {
         observeVoiceState()
     }
@@ -126,25 +133,69 @@ class MaintenanceConfirmViewModel @Inject constructor(
     }
 
     /**
-     * Processa input vocale aggiuntivo e aggiorna i campi.
+     * Processa input vocale aggiuntivo.
+     * Invoca il callback onProcessVoiceWithContext per permettere alla Screen
+     * di passare i dati attuali del form (inclusi quelli inseriti manualmente).
      */
     private fun processAdditionalVoiceInput(transcript: String) {
+        val callback = onProcessVoiceWithContext
+        if (callback != null) {
+            callback.invoke(transcript)
+        } else {
+            // Fallback: processa senza contesto (comportamento legacy)
+            Log.w(TAG, "onProcessVoiceWithContext not set, processing without context")
+            viewModelScope.launch {
+                _voiceContinueState.value = VoiceContinueState.Processing
+                try {
+                    val updates = geminiService.updateMaintenanceFromVoice(
+                        currentData = "",
+                        newInput = transcript
+                    )
+                    if (updates.isNotEmpty()) {
+                        onVoiceUpdate?.invoke(updates)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing voice input", e)
+                } finally {
+                    _voiceContinueState.value = VoiceContinueState.Idle
+                }
+            }
+        }
+    }
+
+    /**
+     * Processa input vocale con contesto dei dati attuali.
+     */
+    fun processVoiceWithContext(transcript: String, currentData: MaintenanceFormData) {
         viewModelScope.launch {
             _voiceContinueState.value = VoiceContinueState.Processing
 
             try {
+                val context = """
+                    Prodotto: ${currentData.productName}
+                    Manutentore: ${currentData.maintainerName}
+                    Tipo intervento: ${currentData.type}
+                    Descrizione: ${currentData.description}
+                    Durata: ${currentData.durationMinutes?.let { "$it minuti" } ?: "non specificata"}
+                    In garanzia: ${if (currentData.isWarranty) "sì" else "no"}
+                    Data: ${currentData.date}
+                    Note: ${currentData.notes}
+                """.trimIndent()
+
+                Log.d(TAG, "Processing voice with context:\n$context\nNew input: $transcript")
+
                 val updates = geminiService.updateMaintenanceFromVoice(
-                    currentData = "",
+                    currentData = context,
                     newInput = transcript
                 )
 
                 if (updates.isNotEmpty()) {
-                    Log.d(TAG, "Voice updates: $updates")
+                    Log.d(TAG, "Voice updates with context: $updates")
                     onVoiceUpdate?.invoke(updates)
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing voice input", e)
+                Log.e(TAG, "Error processing voice input with context", e)
             } finally {
                 _voiceContinueState.value = VoiceContinueState.Idle
             }

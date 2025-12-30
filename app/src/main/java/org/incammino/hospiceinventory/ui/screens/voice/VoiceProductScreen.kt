@@ -37,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -163,18 +164,19 @@ private fun ProductMicrophoneButton(
         label = "pulse_scale"
     )
 
+    // TAP-TO-STOP: Pulsante ROSSO durante l'ascolto per indicare chiaramente STOP
     val containerColor = when {
-        isActive -> MaterialTheme.colorScheme.primary
+        isActive -> Color.Red  // ROSSO = STOP
         isProcessing -> MaterialTheme.colorScheme.tertiary
         state is VoiceProductState.Error -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.primary  // Blu/primario quando pronto
     }
 
     val contentColor = when {
-        isActive -> MaterialTheme.colorScheme.onPrimary
+        isActive -> Color.White
         isProcessing -> MaterialTheme.colorScheme.onTertiary
         state is VoiceProductState.Error -> MaterialTheme.colorScheme.onError
-        else -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onPrimary
     }
 
     FilledIconButton(
@@ -255,8 +257,8 @@ private fun ProductTranscriptBox(
 private fun getProductStateLabel(state: VoiceProductState): String {
     return when (state) {
         is VoiceProductState.Idle -> "Tocca e parla"
-        is VoiceProductState.Listening -> "Sto ascoltando..."
-        is VoiceProductState.Transcribing -> "Sto ascoltando..."
+        is VoiceProductState.Listening -> "Tocca STOP quando hai finito"
+        is VoiceProductState.Transcribing -> "Tocca STOP quando hai finito"
         is VoiceProductState.Processing -> "Elaborazione in corso..."
         is VoiceProductState.Extracted -> "Completato!"
         is VoiceProductState.Error -> "Tocca per riprovare"

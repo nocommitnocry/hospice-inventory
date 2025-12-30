@@ -12,6 +12,7 @@ import org.incammino.hospiceinventory.data.repository.LocationRepository
 import org.incammino.hospiceinventory.domain.model.Location
 import org.incammino.hospiceinventory.domain.model.LocationType
 import org.incammino.hospiceinventory.service.voice.GeminiService
+import org.incammino.hospiceinventory.service.voice.LocationFormData
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.service.voice.VoiceService
 import org.incammino.hospiceinventory.service.voice.VoiceState
@@ -47,6 +48,7 @@ class LocationConfirmViewModel @Inject constructor(
     val partialTranscript: StateFlow<String> = _partialTranscript.asStateFlow()
 
     var onVoiceUpdate: ((Map<String, String>) -> Unit)? = null
+    var onProcessVoiceWithContext: ((String) -> Unit)? = null
 
     init {
         observeVoiceState()
@@ -83,15 +85,52 @@ class LocationConfirmViewModel @Inject constructor(
     }
 
     private fun processAdditionalVoiceInput(transcript: String) {
+        val callback = onProcessVoiceWithContext
+        if (callback != null) {
+            callback.invoke(transcript)
+        } else {
+            Log.w(TAG, "onProcessVoiceWithContext not set, processing without context")
+            viewModelScope.launch {
+                _voiceContinueState.value = VoiceContinueState.Processing
+                try {
+                    val updates = geminiService.updateLocationFromVoice("", transcript)
+                    if (updates.isNotEmpty()) {
+                        onVoiceUpdate?.invoke(updates)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing voice input", e)
+                } finally {
+                    _voiceContinueState.value = VoiceContinueState.Idle
+                }
+            }
+        }
+    }
+
+    fun processVoiceWithContext(transcript: String, currentData: LocationFormData) {
         viewModelScope.launch {
             _voiceContinueState.value = VoiceContinueState.Processing
             try {
-                val updates = geminiService.updateLocationFromVoice("", transcript)
+                val context = """
+                    Nome: ${currentData.name}
+                    Tipo: ${currentData.type}
+                    Edificio: ${currentData.buildingName}
+                    Piano (codice): ${currentData.floorCode}
+                    Piano (nome): ${currentData.floorName}
+                    Reparto: ${currentData.department}
+                    Presa ossigeno: ${if (currentData.hasOxygenOutlet) "sì" else "no"}
+                    Posti letto: ${currentData.bedCount ?: "non specificati"}
+                    Note: ${currentData.notes}
+                """.trimIndent()
+
+                Log.d(TAG, "Processing voice with context:\n$context\nNew input: $transcript")
+
+                val updates = geminiService.updateLocationFromVoice(context, transcript)
                 if (updates.isNotEmpty()) {
+                    Log.d(TAG, "Voice updates with context: $updates")
                     onVoiceUpdate?.invoke(updates)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing voice input", e)
+                Log.e(TAG, "Error processing voice input with context", e)
             } finally {
                 _voiceContinueState.value = VoiceContinueState.Idle
             }

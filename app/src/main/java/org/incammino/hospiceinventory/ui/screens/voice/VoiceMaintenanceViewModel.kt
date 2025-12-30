@@ -111,20 +111,22 @@ class VoiceMaintenanceViewModel @Inject constructor(
     }
 
     /**
-     * Avvia l'ascolto.
+     * Avvia l'ascolto in modalità TAP-TO-STOP.
+     * L'utente controlla quando fermare premendo nuovamente il pulsante.
      */
     fun startListening() {
         fullTranscript = ""
         _state.value = VoiceMaintenanceState.Listening
-        voiceService.startListening()
+        voiceService.startManualListening()
     }
 
     /**
-     * Ferma l'ascolto manualmente.
+     * Ferma l'ascolto manualmente (TAP-TO-STOP).
+     * VoiceService finalizzerà il risultato accumulato.
      */
     fun stopListening() {
-        voiceService.stopListening()
-        // Il processing verrà avviato quando VoiceState diventa Idle
+        voiceService.stopManualListening()
+        // Il processing verrà avviato quando riceviamo VoiceState.Result
     }
 
     /**
