@@ -72,6 +72,9 @@ class ProductConfirmViewModel @Inject constructor(
     private val _inlineCreationState = MutableStateFlow(ProductInlineCreationState())
     val inlineCreationState: StateFlow<ProductInlineCreationState> = _inlineCreationState.asStateFlow()
 
+    private val _categories = MutableStateFlow<List<String>>(emptyList())
+    val categories: StateFlow<List<String>> = _categories.asStateFlow()
+
     // ═══════════════════════════════════════════════════════════════════════════════
     // VOICE CONTINUE STATE
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -93,6 +96,15 @@ class ProductConfirmViewModel @Inject constructor(
 
     init {
         observeVoiceState()
+        loadCategories()
+    }
+
+    private fun loadCategories() {
+        viewModelScope.launch {
+            productRepository.getAllCategories().collect { categories ->
+                _categories.value = categories
+            }
+        }
     }
 
     private fun observeVoiceState() {

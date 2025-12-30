@@ -55,6 +55,7 @@ data class ProductEditUiState(
     // Dati di supporto
     val categories: List<String> = emptyList(),
     val locations: List<String> = emptyList(),
+    val suppliers: List<String> = emptyList(),
     val maintainers: List<Maintainer> = emptyList()
 )
 
@@ -84,7 +85,7 @@ class ProductEditViewModel @Inject constructor(
     }
 
     /**
-     * Carica categorie, ubicazioni e manutentori.
+     * Carica categorie, ubicazioni, fornitori e manutentori.
      */
     private fun loadSupportData() {
         viewModelScope.launch {
@@ -96,6 +97,12 @@ class ProductEditViewModel @Inject constructor(
         viewModelScope.launch {
             productRepository.getAllLocations().collect { locations ->
                 _uiState.update { it.copy(locations = locations) }
+            }
+        }
+
+        viewModelScope.launch {
+            productRepository.getAllSuppliers().collect { suppliers ->
+                _uiState.update { it.copy(suppliers = suppliers) }
             }
         }
 

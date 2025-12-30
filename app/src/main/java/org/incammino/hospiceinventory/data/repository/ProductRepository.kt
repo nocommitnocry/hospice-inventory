@@ -178,6 +178,11 @@ class ProductRepository @Inject constructor(
     fun getAllLocations(): Flow<List<String>> = productDao.getAllLocations()
 
     /**
+     * Tutti i fornitori distinti dai prodotti attivi.
+     */
+    fun getAllSuppliers(): Flow<List<String>> = productDao.getAllSuppliers()
+
+    /**
      * Conteggio manutenzioni scadute (con data specifica).
      */
     suspend fun countOverdueMaintenance(today: LocalDate): Int =

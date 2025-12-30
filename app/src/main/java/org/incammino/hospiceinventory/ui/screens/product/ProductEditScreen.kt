@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.datetime.LocalDate
 import org.incammino.hospiceinventory.R
+import org.incammino.hospiceinventory.ui.components.SelectableDropdownField
 import org.incammino.hospiceinventory.domain.model.AccountType
 import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.domain.model.MaintenanceFrequency
@@ -183,23 +184,25 @@ private fun ProductEditForm(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Categoria con autocomplete
-                AutocompleteTextField(
+                // Categoria con dropdown selezionabile
+                SelectableDropdownField(
                     value = uiState.category,
                     onValueChange = onCategoryChange,
                     suggestions = uiState.categories,
-                    label = stringResource(R.string.product_category) + " *",
+                    label = stringResource(R.string.product_category),
+                    isRequired = true,
                     isError = uiState.category.isBlank() && uiState.error != null
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Ubicazione con autocomplete
-                AutocompleteTextField(
+                // Ubicazione con dropdown selezionabile
+                SelectableDropdownField(
                     value = uiState.location,
                     onValueChange = onLocationChange,
                     suggestions = uiState.locations,
-                    label = stringResource(R.string.product_location) + " *",
+                    label = stringResource(R.string.product_location),
+                    isRequired = true,
                     isError = uiState.location.isBlank() && uiState.error != null
                 )
 
@@ -219,12 +222,11 @@ private fun ProductEditForm(
         // Sezione Acquisto
         item {
             SectionCard(title = "Dati acquisto") {
-                OutlinedTextField(
+                SelectableDropdownField(
                     value = uiState.supplier,
                     onValueChange = onSupplierChange,
-                    label = { Text("Fornitore") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    suggestions = uiState.suppliers,
+                    label = "Fornitore"
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -348,58 +350,6 @@ private fun SectionCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             content()
-        }
-    }
-}
-
-/**
- * Campo testo con autocomplete.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AutocompleteTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    suggestions: List<String>,
-    label: String,
-    isError: Boolean = false
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val filteredSuggestions = suggestions.filter {
-        it.contains(value, ignoreCase = true) && it != value
-    }.take(5)
-
-    ExposedDropdownMenuBox(
-        expanded = expanded && filteredSuggestions.isNotEmpty(),
-        onExpandedChange = { expanded = it }
-    ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = {
-                onValueChange(it)
-                expanded = true
-            },
-            label = { Text(label) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(),
-            singleLine = true,
-            isError = isError
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded && filteredSuggestions.isNotEmpty(),
-            onDismissRequest = { expanded = false }
-        ) {
-            filteredSuggestions.forEach { suggestion ->
-                DropdownMenuItem(
-                    text = { Text(suggestion) },
-                    onClick = {
-                        onValueChange(suggestion)
-                        expanded = false
-                    }
-                )
-            }
         }
     }
 }

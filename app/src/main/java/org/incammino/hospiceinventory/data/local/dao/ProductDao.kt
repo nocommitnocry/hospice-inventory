@@ -164,9 +164,18 @@ interface ProductDao {
     
     @Query("SELECT DISTINCT category FROM products WHERE isActive = 1 ORDER BY category")
     fun getAllCategories(): Flow<List<String>>
-    
+
     @Query("SELECT DISTINCT location FROM products WHERE isActive = 1 ORDER BY location")
     fun getAllLocations(): Flow<List<String>>
+
+    @Query("""
+        SELECT DISTINCT supplier FROM products
+        WHERE isActive = 1
+        AND supplier IS NOT NULL
+        AND supplier != ''
+        ORDER BY supplier
+    """)
+    fun getAllSuppliers(): Flow<List<String>>
     
     @Query("""
         SELECT COUNT(*) FROM products 

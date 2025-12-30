@@ -65,6 +65,7 @@ import org.incammino.hospiceinventory.service.voice.ProductConfirmData
 import org.incammino.hospiceinventory.service.voice.ProductFormData
 import org.incammino.hospiceinventory.service.voice.SaveState
 import org.incammino.hospiceinventory.ui.components.InlineEntityCreator
+import org.incammino.hospiceinventory.ui.components.SelectableDropdownField
 import org.incammino.hospiceinventory.ui.components.voice.VoiceContinueButton
 import org.incammino.hospiceinventory.ui.theme.AlertWarning
 
@@ -92,6 +93,7 @@ fun ProductConfirmScreen(
     val inlineCreationState by viewModel.inlineCreationState.collectAsState()
     val voiceContinueState by viewModel.voiceContinueState.collectAsState()
     val partialTranscript by viewModel.partialTranscript.collectAsState()
+    val categoriesFromDb by viewModel.categories.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Stato locale per i campi editabili
@@ -288,6 +290,7 @@ fun ProductConfirmScreen(
 
             CategorySelector(
                 selectedCategory = category,
+                categories = categoriesFromDb,
                 onCategorySelected = { category = it }
             )
 
@@ -442,55 +445,35 @@ private fun WarningsCard(warnings: List<String>) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CategorySelector(
     selectedCategory: String,
+    categories: List<String>,
     onCategorySelected: (String) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-
-    val categories = listOf(
-        "Elettromedicale",
-        "Arredo",
-        "Informatica",
-        "Impianto",
-        "Attrezzatura",
-        "Ausili",
-        "Cucina",
-        "Lavanderia",
-        "Altro"
-    )
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
-        OutlinedTextField(
-            value = selectedCategory.ifBlank { "Seleziona categoria" },
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Categoria") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+    // Lista di default se il DB è vuoto
+    val effectiveCategories = categories.ifEmpty {
+        listOf(
+            "Elettromedicale",
+            "Arredo",
+            "Informatica",
+            "Impianto",
+            "Attrezzatura",
+            "Ausili",
+            "Cucina",
+            "Lavanderia",
+            "Altro"
         )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            categories.forEach { category ->
-                DropdownMenuItem(
-                    text = { Text(category) },
-                    onClick = {
-                        onCategorySelected(category)
-                        expanded = false
-                    }
-                )
-            }
-        }
     }
+
+    SelectableDropdownField(
+        value = selectedCategory,
+        onValueChange = onCategorySelected,
+        suggestions = effectiveCategories,
+        label = "Categoria",
+        isRequired = true,
+        isError = selectedCategory.isBlank()
+    )
 }
 
 @Composable
