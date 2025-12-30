@@ -1253,9 +1253,20 @@ class GeminiService @Inject constructor(
 
     /**
      * Resetta il contesto della conversazione.
+     *
+     * Chiamato quando un flusso Voice Dump termina (Salva o Annulla)
+     * per evitare contaminazione tra sessioni diverse.
+     *
+     * @see VoiceAssistant.clearContext
+     * @see HomeViewModel.clearGeminiContext
      */
     fun resetContext() {
+        val hadActiveTask = conversationContext.activeTask != null
+        val exchangeCount = conversationContext.recentExchanges.size
+
         conversationContext = ConversationContext()
+
+        Log.i(TAG, "Context RESET - had activeTask: $hadActiveTask, exchanges cleared: $exchangeCount")
     }
 
     /**

@@ -397,4 +397,17 @@ class HomeViewModel @Inject constructor(
         super.onCleared()
         voiceAssistant.release()
     }
+
+    /**
+     * Pulisce il contesto conversazionale di Gemini.
+     *
+     * Chiamato quando un flusso Voice Dump termina (Salva o Annulla)
+     * per evitare contaminazione tra sessioni diverse.
+     *
+     * @see GeminiService.resetContext
+     */
+    fun clearGeminiContext() {
+        voiceAssistant.clearContext()
+        Log.d(TAG, "Gemini context cleared after voice session")
+    }
 }

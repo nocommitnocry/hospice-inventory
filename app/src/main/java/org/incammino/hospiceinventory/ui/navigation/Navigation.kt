@@ -104,10 +104,16 @@ sealed class Screen(val route: String) {
 
 /**
  * NavHost principale dell'app.
+ *
+ * @param navController Controller di navigazione
+ * @param onVoiceSessionComplete Callback chiamato quando un flusso Voice Dump termina
+ *        (Salva, Annulla o Back). Usato per pulire il contesto Gemini e evitare
+ *        contaminazione dati tra sessioni vocali.
  */
 @Composable
-fun HospiceNavHost(
-    navController: NavHostController = rememberNavController()
+fun AppNavigation(
+    navController: NavHostController = rememberNavController(),
+    onVoiceSessionComplete: () -> Unit = {}
 ) {
     NavHost(
         navController = navController,
@@ -423,8 +429,12 @@ fun HospiceNavHost(
             if (data != null) {
                 MaintenanceConfirmScreen(
                     initialData = data,
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = {
+                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        navController.popBackStack()
+                    },
                     onSaved = {
+                        onVoiceSessionComplete()  // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     },
@@ -436,6 +446,7 @@ fun HospiceNavHost(
                 // Se non ci sono dati, torna indietro
                 // Usa LaunchedEffect per evitare chiamate durante la composizione
                 LaunchedEffect(Unit) {
+                    onVoiceSessionComplete()  // Cleanup anche in caso di dati mancanti
                     navController.popBackStack()
                 }
             }
@@ -461,8 +472,12 @@ fun HospiceNavHost(
             if (data != null) {
                 ProductConfirmScreen(
                     initialData = data,
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = {
+                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        navController.popBackStack()
+                    },
                     onSaved = {
+                        onVoiceSessionComplete()  // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     },
@@ -473,6 +488,7 @@ fun HospiceNavHost(
             } else {
                 // Se non ci sono dati, torna indietro
                 LaunchedEffect(Unit) {
+                    onVoiceSessionComplete()  // Cleanup anche in caso di dati mancanti
                     navController.popBackStack()
                 }
             }
@@ -502,8 +518,12 @@ fun HospiceNavHost(
             if (data != null) {
                 MaintainerConfirmScreen(
                     initialData = data,
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = {
+                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        navController.popBackStack()
+                    },
                     onSaved = {
+                        onVoiceSessionComplete()  // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     }
@@ -511,6 +531,7 @@ fun HospiceNavHost(
             } else {
                 // Se non ci sono dati, torna indietro
                 LaunchedEffect(Unit) {
+                    onVoiceSessionComplete()  // Cleanup anche in caso di dati mancanti
                     navController.popBackStack()
                 }
             }
@@ -536,8 +557,12 @@ fun HospiceNavHost(
             if (data != null) {
                 LocationConfirmScreen(
                     initialData = data,
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = {
+                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        navController.popBackStack()
+                    },
                     onSaved = {
+                        onVoiceSessionComplete()  // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     }
@@ -545,9 +570,21 @@ fun HospiceNavHost(
             } else {
                 // Se non ci sono dati, torna indietro
                 LaunchedEffect(Unit) {
+                    onVoiceSessionComplete()  // Cleanup anche in caso di dati mancanti
                     navController.popBackStack()
                 }
             }
         }
     }
+}
+
+/**
+ * Alias per compatibilità con codice esistente.
+ * @deprecated Usa AppNavigation o AppNavigationWithCleanup
+ */
+@Composable
+fun HospiceNavHost(
+    navController: NavHostController = rememberNavController()
+) {
+    AppNavigation(navController = navController)
 }

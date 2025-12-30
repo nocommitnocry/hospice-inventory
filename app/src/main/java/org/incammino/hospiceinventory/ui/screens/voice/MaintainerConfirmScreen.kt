@@ -1,5 +1,6 @@
 package org.incammino.hospiceinventory.ui.screens.voice
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -65,6 +66,11 @@ fun MaintainerConfirmScreen(
     onNavigateBack: () -> Unit,
     onSaved: () -> Unit
 ) {
+    // Intercetta back gesture per garantire cleanup del contesto Gemini
+    BackHandler {
+        onNavigateBack()  // Delega al callback che fa cleanup
+    }
+
     val saveState by viewModel.saveState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 

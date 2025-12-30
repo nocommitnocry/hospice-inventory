@@ -1,5 +1,6 @@
 package org.incammino.hospiceinventory.ui.screens.voice
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -82,6 +83,11 @@ fun ProductConfirmScreen(
     onSaved: () -> Unit,
     onNavigateToLocationSearch: () -> Unit = {}
 ) {
+    // Intercetta back gesture per garantire cleanup del contesto Gemini
+    BackHandler {
+        onNavigateBack()  // Delega al callback che fa cleanup
+    }
+
     val saveState by viewModel.saveState.collectAsState()
     val inlineCreationState by viewModel.inlineCreationState.collectAsState()
     val voiceContinueState by viewModel.voiceContinueState.collectAsState()

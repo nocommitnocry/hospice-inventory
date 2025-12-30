@@ -4,10 +4,10 @@
 
 ## 📋 Progetto
 
-**Nome:** Hospice Inventory  
-**Tipo:** App Android voice-first  
-**Cliente:** In Cammino Società Cooperativa Sociale (Hospice Abbiategrasso)  
-**Lingua codice:** Kotlin  
+**Nome:** Hospice Inventory
+**Tipo:** App Android voice-first
+**Cliente:** In Cammino Società Cooperativa Sociale (Hospice Abbiategrasso)
+**Lingua codice:** Kotlin
 **Lingua UI/commenti:** Italiano
 
 ---
@@ -71,7 +71,8 @@ HospiceInventory/
 │       │   │   │   ├── settings/
 │       │   │   │   └── voice/            # Voice Dump screens (v2.0)
 │       │   │   ├── components/           # Componenti riutilizzabili
-│       │   │   └── navigation/           # Navigation.kt
+│       │   │   │   └── voice/            # VoiceDumpButton, VoiceContinueButton
+│       │   │   └── navigation/           # Navigation.kt, NavigationWithCleanup.kt
 │       │   ├── service/
 │       │   │   ├── voice/                # VoiceService, GeminiService, ExtractionPrompts
 │       │   │   ├── notification/         # NotificationWorker
@@ -130,26 +131,26 @@ data class ProductEntity(
     val category: String,
     val location: String,
     val assigneeId: String?,
-    
+
     // Garanzia
     val warrantyMaintainerId: String?,   // Fornitore (durante garanzia)
     val warrantyStartDate: LocalDate?,
     val warrantyEndDate: LocalDate?,
     val serviceMaintainerId: String?,    // Riparatore (post-garanzia)
-    
+
     // Manutenzione periodica
     val maintenanceFrequency: MaintenanceFrequency?,
     val maintenanceIntervalDays: Int?,   // Per CUSTOM
     val lastMaintenanceDate: LocalDate?,
     val nextMaintenanceDue: LocalDate?,
-    
+
     // Acquisto
     val purchaseDate: LocalDate?,
     val price: Double?,
     val accountType: AccountType?,
     val supplier: String?,
     val invoiceNumber: String?,
-    
+
     // Metadata
     val imageUri: String?,
     val notes: String?,
@@ -166,7 +167,7 @@ data class ProductEntity(
 data class MaintainerEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val email: String?,          // Obbligatoria per invio email
+    val email: String?,
     val phone: String?,
     val address: String?,
     val city: String?,
@@ -187,8 +188,8 @@ data class MaintainerEntity(
 @Entity(tableName = "maintenances")
 data class MaintenanceEntity(
     @PrimaryKey val id: String,
-    val productId: String,       // FK -> products
-    val maintainerId: String?,   // FK -> maintainers
+    val productId: String,
+    val maintainerId: String?,
     val date: Instant,
     val type: MaintenanceType,
     val outcome: MaintenanceOutcome?,
@@ -204,62 +205,28 @@ data class MaintenanceEntity(
 )
 ```
 
-### Enums
+### Enums Principali
 
 ```kotlin
 enum class MaintenanceFrequency(val days: Int, val label: String) {
-    TRIMESTRALE(90, "Trimestrale (3 mesi)"),
-    SEMESTRALE(180, "Semestrale (6 mesi)"),
-    ANNUALE(365, "Annuale"),
-    BIENNALE(730, "Biennale (2 anni)"),
-    TRIENNALE(1095, "Triennale (3 anni)"),
-    QUADRIENNALE(1460, "Quadriennale (4 anni)"),
-    QUINQUENNALE(1825, "Quinquennale (5 anni)"),
-    CUSTOM(0, "Personalizzata")  // Usa maintenanceIntervalDays
+    TRIMESTRALE(90), SEMESTRALE(180), ANNUALE(365),
+    BIENNALE(730), TRIENNALE(1095), QUADRIENNALE(1460),
+    QUINQUENNALE(1825), CUSTOM(0)
 }
 
-enum class AccountType(val label: String) {
-    PROPRIETA("Proprietà"), NOLEGGIO("Noleggio"),
-    COMODATO("Comodato d'uso"), LEASING("Leasing")
+enum class AccountType { PROPRIETA, NOLEGGIO, COMODATO, LEASING }
+
+enum class MaintenanceType(val metaCategory: MetaCategory, val synonyms: List<String>) {
+    PROGRAMMATA, VERIFICA, RIPARAZIONE, SOSTITUZIONE,
+    INSTALLAZIONE, COLLAUDO, DISMISSIONE, STRAORDINARIA
 }
 
-// MaintenanceType con supporto matching vocale
-enum class MaintenanceType(
-    val label: String,
-    val displayName: String,
-    val metaCategory: MetaCategory,
-    val synonyms: List<String>
-) {
-    PROGRAMMATA("Programmata", "Manutenzione programmata", ORDINARIA,
-        listOf("programmata", "periodica", "schedulata")),
-    VERIFICA("Verifica/Controllo", "Verifica periodica", ORDINARIA,
-        listOf("verifica", "controllo", "check", "ispezione")),
-    RIPARAZIONE("Riparazione", "Riparazione", STRAORDINARIA,
-        listOf("riparazione", "riparato", "aggiustato", "sistemato")),
-    SOSTITUZIONE("Sostituzione componente", "Sostituzione", STRAORDINARIA,
-        listOf("sostituzione", "sostituito", "cambiato")),
-    INSTALLAZIONE("Installazione", "Installazione", LIFECYCLE,
-        listOf("installazione", "installato", "montato")),
-    COLLAUDO("Collaudo", "Collaudo", LIFECYCLE,
-        listOf("collaudo", "collaudato", "test iniziale")),
-    DISMISSIONE("Dismissione", "Dismissione", LIFECYCLE,
-        listOf("dismissione", "dismesso", "smontato", "buttato")),
-    STRAORDINARIA("Straordinaria", "Intervento straordinario", STRAORDINARIA,
-        listOf("straordinaria", "urgente", "emergenza"));
-
-    enum class MetaCategory { ORDINARIA, STRAORDINARIA, LIFECYCLE }
-}
-
-enum class MaintenanceOutcome(val label: String) {
-    RIPRISTINATO("Ripristinato/Funzionante"), PARZIALE("Parzialmente risolto"),
-    GUASTO("Ancora guasto"), IN_ATTESA_RICAMBI("In attesa ricambi"),
-    IN_ATTESA_TECNICO("In attesa tecnico"), DISMESSO("Dismesso"),
-    SOSTITUITO("Sostituito"), NON_NECESSARIO("Intervento non necessario")
+enum class MaintenanceOutcome {
+    RIPRISTINATO, PARZIALE, GUASTO, IN_ATTESA_RICAMBI,
+    IN_ATTESA_TECNICO, DISMESSO, SOSTITUITO, NON_NECESSARIO
 }
 
 enum class SyncStatus { SYNCED, PENDING, CONFLICT }
-enum class EmailStatus { PENDING, SENT, FAILED }
-enum class AlertType { ADVANCE_30, ADVANCE_7, DUE_TODAY, OVERDUE }
 ```
 
 ---
@@ -269,36 +236,12 @@ enum class AlertType { ADVANCE_30, ADVANCE_7, DUE_TODAY, OVERDUE }
 ### Selezione Manutentore (Garanzia vs Service)
 
 ```kotlin
-// In Product domain model
 fun getCurrentMaintainerId(): String? {
     return if (isUnderWarranty()) {
         warrantyMaintainerId ?: serviceMaintainerId
     } else {
         serviceMaintainerId ?: warrantyMaintainerId
     }
-}
-
-fun isUnderWarranty(): Boolean {
-    val today = Clock.System.now()
-        .toLocalDateTime(TimeZone.currentSystemDefault()).date
-    return warrantyEndDate != null && today <= warrantyEndDate
-}
-```
-
-### Calcolo Prossima Manutenzione
-
-```kotlin
-fun calculateNextMaintenanceDue(
-    lastDate: LocalDate,
-    frequency: MaintenanceFrequency,
-    customDays: Int? = null
-): LocalDate {
-    val days = if (frequency == MaintenanceFrequency.CUSTOM) {
-        customDays ?: 365
-    } else {
-        frequency.days
-    }
-    return lastDate.plus(DatePeriod(days = days))
 }
 ```
 
@@ -310,28 +253,26 @@ fun calculateNextMaintenanceDue(
 | daysRemaining in 8..30 | ADVANCE_30 |
 | daysRemaining in 1..7 | ADVANCE_7 |
 | daysRemaining == 0 | DUE_TODAY |
-| daysRemaining < 0 | OVERDUE (daily reminder) |
+| daysRemaining < 0 | OVERDUE |
 
 ---
 
-## 🎤 Voice Interface
+## 🎤 Voice Interface (v2.0 - Voice Dump + Visual Confirm)
 
-### Paradigma: Voice Dump + Visual Confirm (v2.0 - 26/12/2025)
+### Paradigma Attuale
 
-**Cambio architetturale fondamentale** rispetto al flusso conversazionale multi-step:
+| Aspetto | Voice Dump (v2.0) |
+|---------|-------------------|
+| Tocchi | 2 |
+| Chiamate API Gemini | 1 |
+| Tempo completamento | ~45 secondi |
+| Pattern | Tap-to-start, Tap-to-stop |
 
-| Aspetto | Prima (Multi-Step) | Ora (Voice Dump) |
-|---------|-------------------|------------------|
-| Tocchi | 6+ | 2 |
-| Chiamate API Gemini | 6+ | 1 |
-| Tempo completamento | ~2.5 minuti | ~45 secondi |
-| Complessità | Alta (context loss, loop) | Bassa |
-
-**Flusso nuovo:**
+**Flusso:**
 ```
-1. Utente tocca pulsante specifico (es. "Registra Manutenzione")
-2. Utente parla TUTTO in una sessione vocale
-3. Gemini estrae dati strutturati (1 chiamata API, JSON)
+1. Utente tocca pulsante (es. "Registra Manutenzione")
+2. Pulsante diventa ROSSO - utente parla liberamente
+3. Tocca di nuovo per FERMARE → Gemini estrae dati (JSON)
 4. Si apre scheda precompilata per verifica/correzione
 5. Utente salva (1 tocco)
 ```
@@ -340,161 +281,119 @@ fun calculateNextMaintenanceDue(
 
 ```
 HomeScreen
-├── [🔧 Registra Manutenzione] → VoiceMaintenanceScreen
-├── [📦 Nuovo Prodotto]        → VoiceProductScreen
-├── [👷 Nuovo Manutentore]     → VoiceMaintainerScreen
-└── [📍 Nuova Ubicazione]      → VoiceLocationScreen
-        │
-        ▼
-VoiceXxxScreen (input vocale)
-├── VoiceService (STT)
-│   └── SttPostProcessor
-├── Transcript in tempo reale
+├── [🔧 Registra Manutenzione] → VoiceMaintenanceScreen → MaintenanceConfirmScreen
+├── [📦 Nuovo Prodotto]        → VoiceProductScreen     → ProductConfirmScreen
+├── [👷 Nuovo Manutentore]     → VoiceMaintainerScreen  → MaintainerConfirmScreen
+└── [📍 Nuova Ubicazione]      → VoiceLocationScreen    → LocationConfirmScreen
+
+VoiceXxxScreen
+├── VoiceService (STT con ascolto continuo)
+│   ├── isContinuousListening flag
+│   ├── SttPostProcessor (correzioni)
+│   └── Accumulo risultati tra pause
+├── VoiceDumpButton (rosso durante ascolto)
 └── GeminiService.extractXxxData() → JSON
-        │
-        ▼
-XxxConfirmScreen (scheda editabile)
+
+XxxConfirmScreen
+├── BackHandler (intercetta swipe back)
 ├── Dati precompilati da Gemini
 ├── EntityResolver per match entità
-├── Campi editabili
-└── [Salva] → Repository
+├── VoiceContinueButton (input incrementale)
+├── FormData per context (preserva modifiche manuali)
+└── [Salva] → Repository → onVoiceSessionComplete() → cleanup
 ```
 
-### Modelli Estrazione (service/voice/)
+### VoiceService - Pattern Ascolto Continuo (30/12/2025)
 
 ```kotlin
-// ExtractionModels.kt
-@Serializable
-data class MaintenanceExtraction(
-    val maintainer: MaintainerInfo?,
-    val product: ProductSearchInfo,
-    val intervention: InterventionInfo,
-    val confidence: ConfidenceInfo
+// Flag principale
+private var isContinuousListening = false
+
+fun startListening() {
+    isContinuousListening = true
+    speechRecognizer?.startListening(intent)
+}
+
+fun stopListening() {
+    isContinuousListening = false
+    speechRecognizer?.stopListening()
+    finalizeResult()  // UNICO punto di finalizzazione
+}
+
+// In RecognitionListener:
+override fun onEndOfSpeech() {
+    // NON fare nulla - aspettare onResults/onError
+}
+
+override fun onResults(results: Bundle?) {
+    accumulatedText.append(bestMatch)
+    if (isContinuousListening) {
+        speechRecognizer?.startListening(intent)  // Loop!
+    }
+}
+```
+
+### VoiceContinueButton - Context Preservation (30/12/2025)
+
+```kotlin
+// ConfirmScreen: passa dati attuali al ViewModel
+LaunchedEffect(Unit) {
+    viewModel.onProcessVoiceWithContext = { transcript ->
+        val currentFormData = ProductFormData(
+            name = name,  // Valore ATTUALE (incluse modifiche manuali)
+            model = model,
+            // ...
+        )
+        viewModel.processVoiceWithContext(transcript, currentFormData)
+    }
+}
+
+// ViewModel: chiama Gemini con context
+fun processVoiceWithContext(transcript: String, currentData: ProductFormData) {
+    val context = "Nome: ${currentData.name}\nModello: ${currentData.model}..."
+    val updates = geminiService.updateProductFromVoice(context, transcript)
+    onVoiceUpdate?.invoke(updates)
+}
+```
+
+### Memory Cleanup - Gemini Context (30/12/2025)
+
+```kotlin
+// Flusso cleanup su Salva/Annulla/Back/Swipe:
+
+ConfirmScreen → onNavigateBack/onSaved
+    → Navigation.kt: onVoiceSessionComplete()
+        → HomeViewModel.clearGeminiContext()
+            → VoiceAssistant.clearContext()
+                → GeminiService.resetContext()
+                    → Log: "Context RESET - had activeTask: X, exchanges cleared: Y"
+
+// BackHandler in ogni ConfirmScreen:
+BackHandler {
+    onNavigateBack()  // Delega al callback che fa cleanup
+}
+
+// Navigation.kt con cleanup callback:
+AppNavigation(
+    navController = navController,
+    onVoiceSessionComplete = { homeViewModel.clearGeminiContext() }
 )
-
-@Serializable
-data class ProductExtraction(
-    val product: ProductInfo,
-    val location: LocationSearchInfo,
-    val supplier: SupplierInfo?,
-    val warranty: WarrantyInfo?,
-    val maintenance: MaintenanceScheduleInfo?,
-    val confidence: ConfidenceInfo
-)
-
-// Stati UI
-sealed class VoiceXxxState {
-    object Idle : VoiceXxxState()
-    object Listening : VoiceXxxState()
-    data class Transcribing(val partialText: String) : VoiceXxxState()
-    object Processing : VoiceXxxState()  // Gemini elabora
-    data class Extracted(val data: XxxConfirmData) : VoiceXxxState()
-    data class Error(val message: String) : VoiceXxxState()
-}
-
-// Match entità
-sealed class EntityMatch<T> {
-    data class Found<T>(val entity: T) : EntityMatch<T>()
-    data class Ambiguous<T>(val candidates: List<T>, val query: String) : EntityMatch<T>()
-    data class NotFound<T>(val searchTerms: String) : EntityMatch<T>()
-}
 ```
 
-### Prompt Estrazione (ExtractionPrompts.kt)
-
-Prompt dedicati per ogni tipo di registrazione. Gemini risponde SOLO con JSON valido:
+### Entity Resolution
 
 ```kotlin
-object ExtractionPrompts {
-    fun maintenanceExtractionPrompt(transcript: String): String
-    fun productExtractionPrompt(transcript: String): String
-    fun maintainerExtractionPrompt(transcript: String): String
-    fun locationExtractionPrompt(transcript: String): String
-}
-```
-
-### GeminiService - Metodi Estrazione
-
-```kotlin
-// Nuovi metodi (una chiamata, nessuna conversazione)
-suspend fun extractMaintenanceData(transcript: String): Result<MaintenanceExtraction>
-suspend fun extractProductData(transcript: String): Result<ProductExtraction>
-suspend fun extractMaintainerData(transcript: String): Result<MaintainerExtraction>
-suspend fun extractLocationData(transcript: String): Result<LocationExtraction>
-```
-
-### Entity Resolution ✅ (Implementato 24/12/2025)
-
-Quando l'utente riferisce entità per nome (es. "fornitore Medika"), il sistema risolve il nome in ID.
-
-```kotlin
-// EntityResolver.kt - service/voice/
 sealed class Resolution<T> {
     data class Found<T>(val entity: T) : Resolution<T>()
     data class Ambiguous<T>(val candidates: List<T>, val query: String) : Resolution<T>()
     data class NotFound<T>(val query: String) : Resolution<T>()
-    data class NeedsConfirmation<T>(val candidate: T, val similarity: Float, val query: String) : Resolution<T>()
+    data class NeedsConfirmation<T>(val candidate: T, val similarity: Float) : Resolution<T>()
 }
 
 class EntityResolver @Inject constructor(...) {
     suspend fun resolveMaintainer(name: String): Resolution<Maintainer>
     suspend fun resolveLocation(name: String): Resolution<Location>
-    suspend fun resolveAssignee(name: String): Resolution<Assignee>
     suspend fun resolveProduct(searchTerms: List<String>): Resolution<Product>
-}
-```
-
-### Servizi Vocali (invariati)
-
-```
-VoiceService (STT - Speech-to-Text)
-├── SttPostProcessor (correzione sigle + spelling fonetico)
-├── Silence delay (2.5s) per frasi lunghe
-└── Trigger words per terminazione immediata
-
-TtsService / GeminiTtsService (Text-to-Speech)
-└── Voce Kore italiana, fallback Android TTS
-```
-
-### STT Timeout e Gestione
-
-**Timeout Android (intent extras):**
-```kotlin
-EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS = 5000L      // 5s
-EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS = 3000L  // 3s
-```
-
-**Trigger Words** (terminano l'ascolto): "fatto", "invia", "ok", "procedi", "basta", "stop", "fine"
-
-### SttPostProcessor (correzione STT)
-
-**Correzione sigle distorte:** ABC → APC, UBS/EPS/IPS → UPS, Phillips → Philips
-
-**Spelling fonetico italiano:** "A come Ancona, P come Padova, C come Como" → "APC"
-
----
-
-## 🎤 Voice Interface (Legacy - Multi-Step)
-
-> ⚠️ **DEPRECATO**: Il flusso conversazionale multi-step è sostituito da "Voice Dump + Visual Confirm".
-> Il codice legacy rimane per compatibilità ma NON va esteso.
-
-### Action Tags (legacy)
-
-```kotlin
-// DEPRECATO - Non usare per nuove funzionalità
-- START_PRODUCT_CREATION, START_MAINTENANCE, etc.
-- SEARCH, SHOW, MAINTENANCE_LIST, EMAIL, SCAN, ALERTS
-```
-
-### ActiveTask (legacy)
-
-```kotlin
-// DEPRECATO - Sostituito da VoiceXxxScreen + XxxConfirmScreen
-sealed class ActiveTask {
-    data class ProductCreation(...) : ActiveTask()
-    data class MaintenanceRegistration(...) : ActiveTask()
-    // etc.
 }
 ```
 
@@ -508,111 +407,46 @@ sealed class ActiveTask {
 Oggetto: [Hospice Inventory] Richiesta intervento: {product.name}
 
 Gentili Signori,
-
 richiediamo un intervento di manutenzione per:
 
 PRODOTTO: {product.name}
 ID: {product.id}
-Barcode: {product.barcode}
 Ubicazione: {product.location}
-Categoria: {product.category}
 
 PROBLEMA SEGNALATO:
 {description}
-
-Restiamo in attesa di Vostro riscontro per concordare l'intervento.
 
 Cordiali saluti,
-
-Hospice In Cammino
-Via dei Mille 8/10 - 20081 Abbiategrasso (MI)
-Tel: 02 9466160
-
----
-Messaggio generato automaticamente da Hospice Inventory
-```
-
-### Richiesta Intervento in GARANZIA
-
-```
-Oggetto: [GARANZIA] Richiesta assistenza: {product.name}
-
-Gentili Signori,
-
-richiediamo INTERVENTO IN GARANZIA per:
-
-PRODOTTO: {product.name}
-ID: {product.id}
-
-DATI ACQUISTO:
-- Data acquisto: {product.purchaseDate}
-- N° Fattura: {product.invoiceNumber}
-- Scadenza garanzia: {product.warrantyEndDate}
-
-PROBLEMA SEGNALATO:
-{description}
-
-[resto come standard]
-```
-
----
-
-## 🔄 Sync Strategy
-
-### Offline-First Pattern
-
-1. **Tutte le operazioni** scrivono prima su Room (locale)
-2. **SyncStatus** traccia lo stato: SYNCED, PENDING, CONFLICT
-3. **SyncWorker** (WorkManager) sincronizza con Firebase quando online
-4. **Conflict resolution**: Last-write-wins con timestamp
-
-```kotlin
-// Flusso scrittura
-suspend fun saveProduct(product: Product) {
-    // 1. Salva locale
-    productDao.insert(product.copy(syncStatus = PENDING))
-    
-    // 2. Trigger sync se online
-    if (networkMonitor.isOnline()) {
-        syncWorker.enqueue(SyncRequest.PRODUCTS)
-    }
-}
+Hospice In Cammino - Via dei Mille 8/10 - 20081 Abbiategrasso (MI)
 ```
 
 ---
 
 ## ⚙️ Configurazione
 
-### local.properties (da creare, NON committare)
+### local.properties (NON committare)
 
 ```properties
 sdk.dir=/path/to/Android/Sdk
 GEMINI_API_KEY=your_api_key_here
 ```
 
-### google-services.json
-
-Scaricare dalla Firebase Console e posizionare in `app/`
-
-### Permessi Richiesti (AndroidManifest.xml)
+### Permessi Richiesti
 
 - `INTERNET` - API calls
-- `CAMERA` - Barcode scanner, foto
+- `CAMERA` - Barcode scanner
 - `RECORD_AUDIO` - Voice input
 - `POST_NOTIFICATIONS` - Alert scadenze
-- `RECEIVE_BOOT_COMPLETED` - Reschedule alarms
 
 ---
 
 ## 🎨 UI Guidelines
 
-### Colori (dal logo farfalla)
+### Colori
 
 ```kotlin
 val HospiceBlue = Color(0xFF1E88E5)      // Primario
 val HospiceLightBlue = Color(0xFF90CAF9) // Secondario
-val HospiceDarkBlue = Color(0xFF1565C0)  // Accent
-
 val AlertOverdue = Color(0xFFD32F2F)     // Rosso - scaduto
 val AlertWarning = Color(0xFFF57C00)     // Arancione - in scadenza
 val AlertOk = Color(0xFF388E3C)          // Verde - OK
@@ -620,48 +454,16 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 ### Componenti Chiave
 
-- **VoiceButton**: Pulsante circolare grande, animazione pulse quando attivo
-- **AlertBanner**: Card colorata per scadenze (rosso/arancione)
-- **ProductCard**: Card con info essenziali + stato garanzia/manutenzione
-- **StatusBar**: Indicatore online/offline + sync pending
+- **VoiceDumpButton**: Pulsante con stati idle (blu) / listening (rosso) / processing
+- **VoiceContinueButton**: Input vocale incrementale nelle ConfirmScreen
+- **InlineEntityCreator**: Creazione rapida entità mancanti
+- **AlertBanner**: Card colorata per scadenze
 
 ---
 
 ## 📱 Target Device
 
-**Nokia T21**
-- Android 12+ (API 31)
-- 4GB RAM
-- Camera 13MP
-- Display 10.4"
-
-**Ottimizzazioni:**
-- Compose con `remember` e `derivedStateOf`
-- Lazy loading per liste
-- Image caching con Coil
-- Room queries con Flow (non LiveData)
-
----
-
-## 🧪 Testing
-
-```bash
-# Unit tests
-./gradlew test
-
-# Instrumented tests
-./gradlew connectedAndroidTest
-
-# Specific test class
-./gradlew test --tests "*.ProductRepositoryTest"
-```
-
-### Test Prioritari
-
-1. `ProductDao` - CRUD e query scadenze
-2. `MaintenanceCalculator` - Logica date
-3. `WarrantyChecker` - Selezione manutentore
-4. `GeminiService` - Function calling
+**Nokia T21** - Android 12+ (API 31), 4GB RAM, Display 10.4"
 
 ---
 
@@ -669,131 +471,46 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 ### ✅ Completato
 
-#### Infrastruttura
-- [x] Gradle setup con version catalog
-- [x] Room entities (Product, Maintainer, Maintenance, etc.)
-- [x] Room DAOs con tutte le query
-- [x] Database + TypeConverters
-- [x] Domain models + Enums (con synonyms e metaCategory per MaintenanceType)
+#### Voice Dump + Visual Confirm (v2.0)
+- [x] **Fase 1: Manutenzione** ✅ 26/12/2025
+- [x] **Fase 2: Prodotto** ✅ 28/12/2025
+- [x] **Fase 3: Entità Supporto** ✅ 28/12/2025
+  - [x] VoiceMaintainerScreen + MaintainerConfirmScreen
+  - [x] VoiceLocationScreen + LocationConfirmScreen
+- [x] **Fase 4: Polish** ✅ 30/12/2025
+  - [x] VoiceContinueButton per input incrementale
+  - [x] Tap-to-start/Tap-to-stop pattern (isContinuousListening)
+  - [x] Context preservation per VoiceContinue (FormData)
+  - [x] Memory cleanup su Salva/Annulla/Back/Swipe
+  - [x] BackHandler in tutte le ConfirmScreen
+
+#### Infrastruttura & UI
+- [x] Room entities, DAOs, Database
 - [x] Hilt DI modules
-- [x] Theme (colori, typography)
-- [x] Navigation setup
-- [x] Resources (strings, colors)
-
-#### Schermate UI
-- [x] **HomeScreen** + HomeViewModel
-- [x] **SearchScreen** + SearchViewModel - Ricerca prodotti con filtri
-- [x] **ProductDetailScreen** + ProductDetailViewModel - Dettaglio con storico manutenzioni
-- [x] **ProductEditScreen** + ProductEditViewModel - Form creazione/modifica
-- [x] **MaintenanceListScreen** + MaintenanceListViewModel - Lista scadenze
-- [x] **MaintenanceEditScreen** - Registra intervento
-- [x] **SettingsScreen** - Configurazioni
-
-#### Componenti UI
-- [x] VoiceButton - Pulsante vocale con animazioni
-- [x] StatusBar - Indicatore online/offline + sync
-- [x] SearchBar - Barra ricerca
-- [x] ProductCard - Card prodotto
-- [x] AlertBanner - Banner alert scadenze
-- [x] MaintenanceCard - Card manutenzione
-
-#### Repository Layer
-- [x] **ProductRepository** - CRUD prodotti + query scadenze
-- [x] **MaintainerRepository** - CRUD manutentori + `getAllActiveSync()` (24/12/2025)
-- [x] **MaintenanceRepository** - CRUD manutenzioni
-- [x] **LocationRepository** - CRUD ubicazioni + `getAllActiveSync()` (24/12/2025)
-- [x] **AssigneeRepository** - CRUD assegnatari + `getAllActiveSync()` (24/12/2025)
-- [x] **EntityResolver** - Risoluzione nomi → ID con fuzzy match Levenshtein (24/12/2025)
-- [x] Query sincrone `*Sync()` nei repository e DAO (24/12/2025)
+- [x] Navigation con cleanup callback
+- [x] Tutte le schermate principali (Home, Search, Product, Maintenance, Settings)
+- [x] EntityResolver con fuzzy match Levenshtein
+- [x] BarcodeScanner + BarcodeResultScreen
 
 #### Servizi Vocali
-- [x] **VoiceService** - Speech-to-Text (Google Speech Recognition)
-  - [x] Silence delay (2.5s) per frasi lunghe
-  - [x] Trigger words per terminazione immediata
-  - [x] Accumulo risultati parziali
-- [x] **SttPostProcessor** - Correzione sigle distorte + spelling fonetico italiano
-- [x] **TtsService** - Text-to-Speech Android nativo
-- [x] **GeminiTtsService** - Gemini 2.5 Flash TTS via REST API (voce Kore, PCM 24kHz) + fallback Android TTS
-- [x] **GeminiService** - AI con function calling, rate limiting, audit logging
-  - [x] Contesto arricchito (data corrente, lista manutentori)
-  - [x] Ricerca interna durante task MaintenanceRegistration
-  - [x] Temperature ridotta a 0.4 per maggiore precisione
-  - [x] Metodi estrazione Voice Dump (extractMaintenanceData, extractProductData, etc.)
-  - [x] Metodi update incrementali Voice Continue (updateProductFromVoice, etc.) (29/12/2025)
-- [x] **ConversationContext** - Contesto conversazionale multi-turno
-- [x] **ActiveTask** - Task multi-step (ProductCreation, MaintenanceRegistration, MaintainerCreation, LocationCreation, AssigneeCreation)
-- [x] **SpeakerInference** - Inferenza manutentore vs operatore
-- [x] **UserIntentDetector** - Rilevamento "basta così", "annulla"
-- [x] **EnumMatcher** - Matching fuzzy per categorie/tipi
-
-#### Hardware Integration
-- [x] **BarcodeAnalyzer** - Analyzer CameraX con ML Kit per scansione codici
-- [x] **ScannerScreen** - Schermata scanner con preview camera e overlay mirino
-- [x] **BarcodeResultScreen** - Ricerca prodotto + azioni Found/NotFound (29/12/2025)
-
-#### Componenti Voice UI
-- [x] **VoiceContinueButton** - Input vocale incrementale nelle ConfirmScreen (29/12/2025)
-
-#### Dati Demo
-- [x] **SampleDataPopulator** - Dati di test per sviluppo
+- [x] VoiceService con ascolto continuo
+- [x] SttPostProcessor (correzione sigle + spelling fonetico)
+- [x] GeminiService (estrazione, update incrementali)
+- [x] GeminiTtsService (voce Kore italiana)
+- [x] TtsTextCleaner (rimuove markdown per TTS)
 
 ### 🔲 Da Fare
 
-#### Voice Dump + Visual Confirm (v2.0 - 26/12/2025)
+#### Priorità Alta
+- [ ] **Test con utenti reali** su tablet Nokia T21
+- [ ] **Excel Import** - Parser per Inventario.xlsx
 
-**Fase 1: Flusso Manutenzione** ✅ (COMPLETATO 26/12/2025)
-- [x] `ExtractionModels.kt` - Data class per estrazione JSON
-- [x] `ExtractionPrompts.kt` - Prompt Gemini per manutenzione
-- [x] `GeminiService.extractMaintenanceData()` - Metodo estrazione
-- [x] `VoiceMaintenanceScreen.kt` - Screen input vocale
-- [x] `VoiceMaintenanceViewModel.kt` - ViewModel con stati
-- [x] `MaintenanceConfirmScreen.kt` - Scheda conferma editabile
-- [x] `MaintenanceConfirmViewModel.kt` - Logica salvataggio
-- [x] `Navigation.kt` - Route voice/maintenance, maintenance/confirm
-- [x] `HomeScreen.kt` - Pulsante "Registra Manutenzione"
-- [x] `ProductRepository.searchSync()` - Ricerca sincrona prodotti (esisteva già)
+#### Priorità Media
+- [ ] **CameraCapture** - Foto prodotti
+- [ ] **EmailService** - Invio email manutentori
+- [ ] **NotificationWorker** - Alert scadenze
 
-**Fase 2: Flusso Prodotto** ✅ (COMPLETATO 28/12/2025)
-- [x] `ExtractionModels.kt` - Aggiunti ProductExtraction, VoiceProductState, ProductConfirmData, LocationMatch
-- [x] `ExtractionPrompts.kt` - Aggiunto productExtractionPrompt() con regole estrazione
-- [x] `GeminiService.extractProductData()` - Metodo estrazione prodotto
-- [x] `VoiceProductScreen.kt` - Screen input vocale
-- [x] `VoiceProductViewModel.kt` - ViewModel con STT + entity resolution
-- [x] `ProductConfirmScreen.kt` - Form editabile + dialoghi disambiguazione
-- [x] `ProductConfirmViewModel.kt` - Logica salvataggio prodotto
-- [x] `Navigation.kt` - Route voice/product, product/confirm
-- [x] `HomeScreen.kt` - Pulsante "Nuovo Prodotto" accanto a "Manutenzione"
-- [x] Gestione inline creation fornitore/manutentore (COMPLETATO 28/12/2025)
-
-**Fase 3: Entità di Supporto** (dopo Fase 2)
-- [ ] `VoiceMaintainerScreen` + `MaintainerConfirmScreen`
-- [ ] `VoiceLocationScreen` + `LocationConfirmScreen`
-- [ ] Modifica schema Location per gerarchia
-
-**Fase 4: Polish** (dopo Fase 3)
-- [x] VoiceContinueButton per input incrementale (29/12/2025)
-- [ ] Gestione errori STT
-- [ ] Animazioni transizione
-- [ ] Test con utenti reali
-
-#### Entity Resolution ✅ (Implementato 24/12/2025)
-- [x] **EntityResolver** class - Risoluzione nomi → ID con fuzzy match Levenshtein
-- [x] Query sincrone in tutti i Repository
-- [x] Creazione inline entità mancanti (NotFound → offri creazione) ✅ 28/12/2025
-
-#### Import/Export
-- [ ] **Excel Import** - Parser per dati iniziali (Inventario.xlsx)
-
-#### Hardware Integration
-- [x] **BarcodeScanner** - ML Kit Barcode Scanning (17/12/2024)
-- [x] **BarcodeResultScreen** - Flusso scansione → ricerca DB → azioni (29/12/2025)
-- [ ] **CameraCapture** - Foto prodotti con CameraX
-
-#### Comunicazione
-- [ ] **EmailService** - Invio email manutentori (Gmail API o Intent)
-
-#### Background Tasks
-- [ ] **NotificationWorker** - Alert scadenze manutenzioni
+#### Priorità Bassa
 - [ ] **SyncWorker** - Sincronizzazione Firebase
 - [ ] **Offline queue** - Coda email offline
 
@@ -802,305 +519,45 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 ## 🚨 Note Importanti
 
 1. **Mai committare** `local.properties` e `google-services.json`
-2. **Gemini API**: Usare `gemini-2.5-flash`, NON gemini-pro (costi 16x)
-   - Temperature: 0.4 (ridotta per maggiore precisione nell'estrazione dati)
-3. **Room migrations**: Per ora `fallbackToDestructiveMigration()` ok, rimuovere in produzione
-4. **Kotlin**: Target JVM 17
-5. **Min SDK**: 26 (Android 8.0) per kotlinx-datetime
-6. **Nessun dato sanitario**: L'app gestisce solo inventario, NO dati pazienti
+2. **Gemini API**: Usare `gemini-2.5-flash` (Temperature: 0.4)
+3. **Room migrations**: `fallbackToDestructiveMigration()` - rimuovere in produzione
+4. **Min SDK**: 26 (Android 8.0)
+5. **Nessun dato sanitario**: Solo inventario, NO dati pazienti
 
 ---
 
-## 🐛 Bugfix Recenti (Dicembre 2024)
+## 🐛 Bugfix Recenti
 
-### Sessione 16/12/2024 - Test su Tablet
+### Sessione 30/12/2025 - Voice Recognition & Memory Cleanup
 
-**P1 - Flusso MaintenanceRegistration** (CRITICO - RISOLTO)
-- Problema: Navigazione a SearchScreen interrompeva il task multi-step
-- Fix: Ricerca interna in `GeminiService.handleInternalSearchForMaintenance()`
-- File: `GeminiService.kt`, `ProductDao.kt` (aggiunto `searchSync`)
+**F1 - Tap-to-Stop Voice Recognition** (FEATURE)
+- Pattern semplificato: `isContinuousListening` flag
+- `onEndOfSpeech()` non fa nulla - aspetta onResults/onError
+- `onResults()` accumula e riavvia se flag attivo
+- Solo `stopListening()` finalizza il risultato
+- File: `VoiceService.kt`, `VoiceDumpButton.kt`
 
-**P2 - Timeout STT** (CRITICO - RISOLTO)
-- Problema: Device ignorava timeout estesi, troncava frasi lunghe
-- Fix: Silence delay 2.5s + trigger words in `VoiceService`
-- File: `VoiceService.kt`
+**F2 - VoiceContinue Context Preservation** (FIX)
+- Problema: Modifiche manuali perse quando si usa VoiceContinue
+- Soluzione: FormData classes + callback `onProcessVoiceWithContext`
+- File: `ExtractionModels.kt` (+FormData classes), tutti i ConfirmViewModel/Screen
 
-**P3 - Contesto Gemini incompleto** (ALTO - RISOLTO)
-- Problema: Gemini non conosceva data corrente e manutentori
-- Fix: `buildContextPrompt()` arricchito con data, manutentori, task attivo
-- File: `GeminiService.kt`
+**F3 - Memory Cleanup Gemini** (FIX)
+- Problema: Contaminazione dati tra sessioni vocali
+- Soluzione: `resetContext()` su ogni completamento flusso
+- File: `NavigationWithCleanup.kt`, `Navigation.kt`, `HomeViewModel.kt`, `VoiceAssistant`, `GeminiService.kt`, tutte le ConfirmScreen (+BackHandler)
 
-**P4/P5 - Sigle STT distorte** (ALTO - RISOLTO)
-- Problema: "APC" riconosciuto come "ABC", spelling fonetico non interpretato
-- Fix: Nuovo `SttPostProcessor` con correzioni e alfabeto fonetico
-- File: `SttPostProcessor.kt` (nuovo)
+### Sessione 29/12/2025
 
-**P6 - TTS qualità** (MEDIO - RISOLTO 21/12/2024)
-- Fix: Implementato Gemini 2.5 Flash TTS via REST API con voce "Kore" (italiana)
-- Formato: PCM 24kHz mono 16-bit, riprodotto con AudioTrack
-- Fallback: Android TTS nativo se offline o errori API
-- File: `GeminiTtsService.kt`
+- **SearchScreen TextField** - Sincronizzato `_uiState` in `updateQuery()`
+- **VoiceContinueButton** - Input vocale incrementale
+- **BarcodeResultScreen** - Flusso scansione → ricerca DB
 
-### Sessione 17/12/2024 - Bugfix Loop ActiveTask
+### Sessione 28/12/2025
 
-**P7 - Loop conferma ActiveTask** (CRITICO - RISOLTO)
-- Problema: Dopo conferma utente ("sì"), il task ricominciava chiedendo tipo/descrizione
-- Causa: Gemini estraeva i dati ma non li salvava nel task (nessun formato strutturato)
-- Fix:
-  - Aggiunto tag `[TASK_UPDATE:campo=valore]` al system prompt
-  - Parsing del tag in `parseResponse()` con `applyTaskUpdates()`
-  - Helper: `parseTaskUpdateParams()`, `parseMaintenanceTypeFromUpdate()`, `parseTaskDate()`
-- File: `AppModules.kt`, `GeminiService.kt`
-
-**P8 - TTS legge markdown e tag interni** (ALTO - RISOLTO)
-- Problema: TTS pronunciava "asterisco asterisco" e "TASK UPDATE type RIPARAZIONE"
-- Fix: Creato `TtsTextCleaner` object che rimuove:
-  - Tag interni: `[TASK_UPDATE:...]`, `[ACTION:...]`
-  - Markdown: bold, italic, headers, liste, links, code blocks
-- Applicato in `VoiceAssistant.speakResponse()` prima di passare al TTS
-- File: `GeminiTtsService.kt` (TtsTextCleaner object)
-
-### Sessione 23/12/2025 - Voice Flow Entity Creation
-
-**P9 - ProductEditViewModel isNew errato** (CRITICO - PARZIALE)
-- Problema: Route `product/edit/new` → `savedStateHandle["productId"]` restituisce `"new"` (stringa), non `null`
-- Effetto: `isNew = productId == null` → `false` ❌ (modalità MODIFICA invece di CREAZIONE)
-- Fix parziale: Logica corretta per gestire `"new"` come nuovo prodotto
-- ✅ Riconoscimento route "new" → modalità creazione
-- ❌ Prefill data da voice flow non implementato (i dati raccolti vocalmente NON vengono passati alla UI)
-- ❌ Salvataggio diretto da voice non implementato
-- File: `ProductEditViewModel.kt` (linee 71-74)
-
-**P10 - Azioni creazione entità mancanti** (ALTO - RISOLTO 24/12/2025)
-- Problema: Mancavano action tags per avviare creazione manutentori, ubicazioni, assegnatari
-- ✅ Action tags aggiunti al system prompt:
-  - `START_MAINTAINER_CREATION`, `START_LOCATION_CREATION`, `START_ASSIGNEE_CREATION`
-- ✅ Parsing ACTION in `parseResponse()`
-- ✅ Metodi: `startMaintainerCreationTask()`, `startLocationCreationTask()`, `startAssigneeCreationTask()`
-- ✅ `completeActiveTask()` genera `AssistantAction.Save*` per salvataggio
-- ✅ EntityResolver implementato per risolvere nomi → ID
-- File: `GeminiService.kt`, `EntityResolver.kt`
-
-**P11 - CREATE generico confondeva Gemini** (MEDIO - RISOLTO)
-- Problema: `CREATE:campo=valore` veniva usato per qualsiasi entità, non solo prodotti
-- Fix:
-  - Prompt riorganizzato con sezione "CREAZIONE ENTITÀ" dedicata
-  - `CREATE` unificato con `START_PRODUCT_CREATION` (entrambi avviano task guidato)
-  - Aggiunto `startProductCreationTaskWithPrefill()` per CREATE con parametri
-  - Nota esplicita: "Non usare CREATE generico"
-- File: `GeminiService.kt`
-
-**P12 - Voice-first flow + Entity Resolution** (ENHANCEMENT - IMPLEMENTATO 24/12/2025)
-- Scelta architetturale: Salvataggio diretto da voice, UI opzionale per dettagli
-- ✅ EntityResolver implementato con fuzzy match Levenshtein
-- ✅ Campi `*Name` e `*Id` in ActiveTask.ProductCreation
-- ✅ `resolveEntityReferences()` in GeminiService
-- ✅ Disambiguazione automatica (Ambiguous, NeedsConfirmation)
-- ⏳ TODO: Creazione inline entità mancanti (NotFound → offri creazione)
-- File: `GeminiService.kt`, `EntityResolver.kt`, `ConversationContext.kt`
-
-### Sessione 24/12/2025 - Entity Resolution Implementation
-
-**P13 - Entity Resolution** (CRITICO - IMPLEMENTATO)
-- Problema: Utente dice "fornitore Medika" ma il DB richiede UUID, non stringa
-- Soluzione: EntityResolver con fuzzy match Levenshtein
-
-**File creati/modificati:**
-```
-NUOVO: service/voice/EntityResolver.kt
-  - Resolution<T>: Found, Ambiguous, NotFound, NeedsConfirmation
-  - resolveMaintainer(), resolveLocation(), resolveAssignee()
-  - Levenshtein distance per fuzzy match (similarity >= 0.6)
-
-MODIFICATI:
-  - SupportDaos.kt: +getAllActiveSync() per Maintainer, Location, Assignee
-  - MaintainerRepository.kt: +getAllActiveSync()
-  - LocationRepository.kt: +getAllActiveSync()
-  - AssigneeRepository.kt: +getAllActiveSync()
-  - ConversationContext.kt: +campi *Id/*Name in ProductCreation
-  - GeminiService.kt: +entityResolver injection, +resolveEntityReferences()
-```
-
-**Flusso implementato:**
-```
-completeActiveTask()
-    ↓
-resolveEntityReferences(task)
-    ↓
-  Found → usa ID, procedi
-  Ambiguous → "Quale intendi: X, Y, Z?"
-  NeedsConfirmation → "Intendi X?" (similarity 60-80%)
-  NotFound → "X non esiste. Vuoi crearlo?" (TODO: inline creation)
-```
-
-**Test:** Build passata, da testare su device.
-
-**P14 - UserIntentDetector false positive "no"** (CRITICO - RISOLTO 24/12/2025)
-- Problema: "no" in CANCEL_PHRASES matchava con `contains()`, causando falsi annullamenti
-- Esempio: "telefono 02 946..." contiene "no" → CANCEL (errato!)
-- Anche: "nome", "nove", "noi", "conoscere" → falsi positivi
-- Fix: Per frasi corte (≤3 caratteri), richiedi match esatto su parola isolata
-```kotlin
-val words = normalized.split(Regex("[\\s,.!?;:]+")).filter { it.isNotEmpty() }
-val isCancelIntent = CANCEL_PHRASES.any { phrase ->
-    when {
-        phrase.length <= 3 -> words.contains(phrase)  // "no" deve essere parola isolata
-        else -> normalized.contains(phrase)
-    }
-}
-```
-- File: `ConversationContext.kt` (UserIntentDetector.detect)
-
-### Sessione 28/12/2025 - Fase 2 Voice Dump Prodotti
-
-**Implementazione Fase 2: Flusso Nuovo Prodotto** (COMPLETATO)
-
-Implementato il flusso "Voice Dump + Visual Confirm" per la registrazione di nuovi prodotti, seguendo il pattern della Fase 1 (manutenzioni).
-
-**File creati:**
-```
-ui/screens/voice/VoiceProductScreen.kt      - Input vocale con mic animato
-ui/screens/voice/VoiceProductViewModel.kt   - STT + Gemini + EntityResolver
-ui/screens/voice/ProductConfirmScreen.kt    - Form editabile precompilato
-ui/screens/voice/ProductConfirmViewModel.kt - Salvataggio prodotto
-```
-
-**File modificati:**
-```
-service/voice/ExtractionModels.kt   - +ProductExtraction, VoiceProductState, ProductConfirmData, LocationMatch
-service/voice/ExtractionPrompts.kt  - +productExtractionPrompt()
-service/voice/GeminiService.kt      - +extractProductData()
-ui/navigation/Navigation.kt         - +route voice/product, product/confirm
-ui/screens/home/HomeScreen.kt       - +pulsante "Nuovo Prodotto"
-```
-
-**Flusso implementato:**
-```
-HomeScreen [Nuovo Prodotto]
-    → VoiceProductScreen (STT, trascrizione live)
-        → GeminiService.extractProductData() (JSON)
-        → EntityResolver (ubicazione, fornitore)
-    → ProductConfirmScreen
-        ├── Campi editabili (nome, modello, produttore, seriale, barcode, categoria)
-        ├── LocationSelector (Found/Ambiguous/NotFound)
-        ├── SupplierSelector (Found/Ambiguous/NotFound)
-        ├── WarrantySelector (dropdown mesi)
-        └── MaintenanceFrequencySelector (dropdown)
-    → ProductRepository.insert()
-    → Home
-```
-
-**Caratteristiche UI:**
-- Dialoghi disambiguazione per ubicazione/fornitore ambigui
-- Dropdown per categoria, garanzia, frequenza manutenzione
-- Warnings per confidence bassa o campi mancanti
-- Build: SUCCESSFUL
-
-**P15 - Creazione Inline Entità Mancanti** (IMPLEMENTATO 28/12/2025)
-- Feature: Quando un'entità non esiste (manutentore, ubicazione, fornitore), mostra pulsante "Crea"
-- L'entità viene creata con `needsCompletion=true` per completamento successivo
-- File creato: `ui/components/InlineEntityCreator.kt` - Componente UI riutilizzabile
-- File modificati:
-  - `MaintenanceConfirmViewModel.kt` - +`createMaintainerInline()`
-  - `MaintenanceConfirmScreen.kt` - Usa `InlineEntityCreator` per manutentore NotFound
-  - `ProductConfirmViewModel.kt` - +`createLocationInline()`, +`createSupplierInline()`
-  - `ProductConfirmScreen.kt` - Usa `InlineEntityCreator` per ubicazione/fornitore NotFound
-
-**P16 - DataHolder.consume() causava sparizione ConfirmScreen** (CRITICO - RISOLTO 28/12/2025)
-- Problema: La schermata di conferma appariva brevemente e poi spariva, tornando alla Home
-- Causa: `DataHolder.consume()` rimuoveva i dati dopo la prima lettura. Quando Compose ricomponeva la schermata (comportamento normale), la seconda chiamata trovava `null` e chiamava `popBackStack()`
-- Sessioni di debug: 4 sessioni per identificare il problema
-- Fix in `Navigation.kt`:
-```kotlin
-// PRIMA (problematico - dati persi alla ricomposizione)
-val data = MaintenanceDataHolder.consume()
-
-// DOPO (corretto - dati preservati con remember)
-val data = remember { MaintenanceDataHolder.consume() }
-
-// E per il caso null, evitare chiamate durante composizione:
-} else {
-    LaunchedEffect(Unit) {
-        navController.popBackStack()
-    }
-}
-```
-- Applicato a tutte e 4 le schermate Confirm:
-  - `MaintenanceConfirmScreen`
-  - `ProductConfirmScreen`
-  - `MaintainerConfirmScreen`
-  - `LocationConfirmScreen`
-- File: `Navigation.kt`
-
-### Sessione 29/12/2025 - VoiceContinueButton + Barcode Scanner
-
-**P17 - Bug SearchScreen TextField non accetta input** (CRITICO - RISOLTO)
-- Problema: Il TextField di SearchScreen non mostrava i caratteri digitati
-- Causa: `updateQuery()` aggiornava `_query.value` ma NON `_uiState.query`; il TextField leggeva `uiState.query` che restava vuoto
-- Fix: Sincronizzato `_uiState` in `updateQuery()`, `toggleCategory()`, `clearSearch()`
-```kotlin
-fun updateQuery(query: String) {
-    _query.value = query
-    _uiState.update { it.copy(query = query) }  // FIX
-}
-```
-- File: `SearchViewModel.kt`
-
-**F1 - VoiceContinueButton** (FEATURE - IMPLEMENTATA)
-- Feature: Bottone per input vocale incrementale nelle schermate di conferma
-- Permette di aggiungere dettagli a voce senza tornare indietro
-
-**File creati:**
-```
-ui/components/voice/VoiceContinueButton.kt - Componente con stati Idle/Listening/Processing
-```
-
-**ViewModels aggiornati:**
-- `ProductConfirmViewModel.kt` - +VoiceService, GeminiService, toggleVoiceInput(), onVoiceUpdate
-- `MaintenanceConfirmViewModel.kt` - idem
-- `MaintainerConfirmViewModel.kt` - idem
-- `LocationConfirmViewModel.kt` - idem
-
-**Screens aggiornati:**
-- `ProductConfirmScreen.kt` - +VoiceContinueButton dopo Note
-- `MaintenanceConfirmScreen.kt` - +VoiceContinueButton dopo Note
-
-**GeminiService - nuovi metodi:**
-```kotlin
-suspend fun updateProductFromVoice(currentData: String, newInput: String): Map<String, String>
-suspend fun updateMaintenanceFromVoice(currentData: String, newInput: String): Map<String, String>
-suspend fun updateMaintainerFromVoice(currentData: String, newInput: String): Map<String, String>
-suspend fun updateLocationFromVoice(currentData: String, newInput: String): Map<String, String>
-private fun parseJsonToMap(jsonString: String): Map<String, String>
-```
-
-**F2 - Barcode Scanner Integration** (FEATURE - IMPLEMENTATA)
-- Feature: Scansione barcode cerca automaticamente il prodotto nel DB
-- Se trovato: naviga a ProductDetail
-- Se non trovato: offre opzione di creare nuovo prodotto
-
-**File creati:**
-```
-ui/screens/scanner/BarcodeResultViewModel.kt - Cerca prodotto per barcode
-ui/screens/scanner/BarcodeResultScreen.kt    - UI con stati Found/NotFound/Error
-```
-
-**Navigation.kt aggiornato:**
-- Aggiunta route `Screen.BarcodeResult`
-- Scanner naviga a BarcodeResult (invece di Search)
-- BarcodeResult naviga a ProductDetail (found) o VoiceProduct (not found)
-
-**Flusso:**
-```
-HomeScreen [Scansiona]
-    → ScannerScreen
-        → onBarcodeScanned(barcode)
-    → BarcodeResultScreen
-        ├── Loading: cerca nel DB
-        ├── Found: naviga a ProductDetail
-        ├── NotFound: mostra opzione "Crea nuovo prodotto"
-        └── Error: mostra errore con retry
-```
+- **DataHolder.consume()** - Fix con `remember {}` per preservare dati
+- **InlineEntityCreator** - Creazione rapida entità mancanti
+- **Fase 2 & 3 Voice Dump** - Completati tutti i flussi
 
 ---
 
@@ -1108,5 +565,55 @@ HomeScreen [Scansiona]
 
 - **Google Cloud Project**: `inventario-462506`
 - **Firebase Project**: Collegato allo stesso progetto
-- **Excel dati**: `Inventario.xlsx` (394 prodotti, 65 manutentori con email)
+- **Excel dati**: `Inventario.xlsx` (394 prodotti, 65 manutentori)
 - **Logo**: Farfalla bicolore blu/azzurro
+
+---
+
+## 🗑️ Legacy da pulire prima della conclusione definitiva
+
+> Codice deprecato che rimane per compatibilità ma **NON va esteso**.
+> Da rimuovere quando il sistema Voice Dump è stabile in produzione.
+
+### Flusso Conversazionale Multi-Step (DEPRECATO)
+
+Il vecchio paradigma richiedeva 6+ tocchi e chiamate API per completare un'operazione.
+Sostituito completamente da "Voice Dump + Visual Confirm".
+
+**File/Codice da rimuovere:**
+- `ConversationContext.activeTask` - Task multi-step (ProductCreation, MaintenanceRegistration, etc.)
+- `GeminiService` metodi legacy: `startProductCreationTask()`, `startMaintenanceTask()`, etc.
+- Action tags nel system prompt: `START_PRODUCT_CREATION`, `START_MAINTENANCE`, `TASK_UPDATE`, etc.
+- `UserIntentDetector` - Rilevamento "basta così", "annulla" (non più necessario)
+- `SpeakerInference` - Inferenza manutentore vs operatore
+- `EnumMatcher` - Matching fuzzy per categorie (ora gestito da ExtractionPrompts)
+
+**Bugfix storici ora irrilevanti:**
+- P1-P8 (Dicembre 2024): Relativi al flusso multi-step
+- P9-P14 (Dicembre 2025): Relativi a ActiveTask e entity resolution nel flusso legacy
+
+### Codice da valutare per rimozione
+
+```kotlin
+// ConversationContext.kt - Rimuovere:
+sealed class ActiveTask { ... }
+val activeTask: ActiveTask?
+fun hasActiveTask()
+fun isActiveTaskComplete()
+
+// GeminiService.kt - Rimuovere sezioni:
+// - "TASK MULTI-STEP" nel system prompt
+// - Metodi start*Task(), complete*Task()
+// - applyTaskUpdates(), parseTaskUpdateParams()
+// - resolveEntityReferences() per ActiveTask
+
+// VoiceAssistant.kt - Semplificare:
+// - Rimuovere gestione WaitingConfirmation state
+// - Rimuovere sendConfirmation()
+```
+
+### File di Spec implementati (da archiviare)
+
+- `TAP_TO_STOP_SPEC.md` - Implementato 30/12/2025
+- `SPEC_FIX_VOICE_CONTINUE_CONTEXT.md` - Implementato 30/12/2025
+- `SPEC_MEMORY_CLEANUP.md` - Implementato 30/12/2025
