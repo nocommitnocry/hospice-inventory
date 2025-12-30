@@ -555,6 +555,11 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - File nuovi: `AutocompleteTextField.kt`, `LocationDefaults.kt`
 - File modificati: `SupportDaos.kt` (+query DISTINCT), `LocationRepository.kt` (+LocationSuggestions), `LocationEditViewModel.kt` (nuovi campi + loadSuggestions), `LocationEditScreen.kt` (form completo)
 
+**F6 - Ricerca Prodotto Inline in MaintenanceConfirmScreen** (FIX)
+- Problema: Clic su 🔍 per cercare prodotto navigava a SearchScreen, perdendo tutti i dati già compilati (descrizione, manutentore, durata, data, note)
+- Soluzione: Ricerca inline con `ProductSearchField` dentro `ProductSelectionCard`
+- File modificati: `MaintenanceConfirmViewModel.kt` (+ProductRepository, +productSearchQuery/Results, +updateProductSearchQuery/clearProductSearch), `MaintenanceConfirmScreen.kt` (riscritto ProductSelectionCard, +ProductSearchField), `Navigation.kt` (-onNavigateToProductSearch)
+
 ### Sessione 30/12/2025 (mattina) - Voice Recognition & Memory Cleanup
 
 **F1 - Tap-to-Stop Voice Recognition** (FEATURE)

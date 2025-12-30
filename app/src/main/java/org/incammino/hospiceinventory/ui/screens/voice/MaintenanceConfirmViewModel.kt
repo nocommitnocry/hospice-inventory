@@ -15,9 +15,11 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import org.incammino.hospiceinventory.data.repository.MaintenanceRepository
 import org.incammino.hospiceinventory.data.repository.MaintainerRepository
+import org.incammino.hospiceinventory.data.repository.ProductRepository
 import org.incammino.hospiceinventory.domain.model.Maintainer
 import org.incammino.hospiceinventory.domain.model.Maintenance
 import org.incammino.hospiceinventory.domain.model.MaintenanceType
+import org.incammino.hospiceinventory.domain.model.Product
 import org.incammino.hospiceinventory.service.voice.GeminiService
 import org.incammino.hospiceinventory.service.voice.MaintenanceFormData
 import org.incammino.hospiceinventory.service.voice.MaintainerMatch
@@ -49,6 +51,7 @@ data class InlineCreationState(
 class MaintenanceConfirmViewModel @Inject constructor(
     private val maintenanceRepository: MaintenanceRepository,
     private val maintainerRepository: MaintainerRepository,
+    private val productRepository: ProductRepository,
     private val voiceService: VoiceService,
     private val geminiService: GeminiService
 ) : ViewModel() {
@@ -62,6 +65,52 @@ class MaintenanceConfirmViewModel @Inject constructor(
 
     private val _inlineCreationState = MutableStateFlow(InlineCreationState())
     val inlineCreationState: StateFlow<InlineCreationState> = _inlineCreationState.asStateFlow()
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // RICERCA PRODOTTO INLINE
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    private val _productSearchQuery = MutableStateFlow("")
+    val productSearchQuery: StateFlow<String> = _productSearchQuery.asStateFlow()
+
+    private val _productSearchResults = MutableStateFlow<List<Product>>(emptyList())
+    val productSearchResults: StateFlow<List<Product>> = _productSearchResults.asStateFlow()
+
+    /**
+     * Aggiorna la query di ricerca prodotto.
+     * Avvia la ricerca automaticamente se query >= 2 caratteri.
+     */
+    fun updateProductSearchQuery(query: String) {
+        _productSearchQuery.value = query
+        if (query.length >= 2) {
+            searchProducts(query)
+        } else {
+            _productSearchResults.value = emptyList()
+        }
+    }
+
+    /**
+     * Esegue la ricerca prodotti nel repository.
+     */
+    private fun searchProducts(query: String) {
+        viewModelScope.launch {
+            try {
+                val results = productRepository.searchSync(query)
+                _productSearchResults.value = results
+            } catch (e: Exception) {
+                Log.e(TAG, "Product search failed", e)
+                _productSearchResults.value = emptyList()
+            }
+        }
+    }
+
+    /**
+     * Pulisce la ricerca prodotto (query e risultati).
+     */
+    fun clearProductSearch() {
+        _productSearchQuery.value = ""
+        _productSearchResults.value = emptyList()
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════════
     // VOICE CONTINUE STATE

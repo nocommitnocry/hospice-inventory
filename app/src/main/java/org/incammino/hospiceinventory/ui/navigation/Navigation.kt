@@ -437,9 +437,6 @@ fun AppNavigation(
                         onVoiceSessionComplete()  // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
-                    },
-                    onNavigateToProductSearch = {
-                        navController.navigate(Screen.Search.createRoute(""))
                     }
                 )
             } else {

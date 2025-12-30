@@ -19,6 +19,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
@@ -31,6 +35,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +46,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.datetime.LocalDate
@@ -76,8 +84,7 @@ fun MaintenanceConfirmScreen(
     initialData: MaintenanceConfirmData,
     viewModel: MaintenanceConfirmViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
-    onSaved: () -> Unit,
-    onNavigateToProductSearch: () -> Unit
+    onSaved: () -> Unit
 ) {
     // Intercetta back gesture per garantire cleanup del contesto Gemini
     BackHandler {
@@ -88,6 +95,8 @@ fun MaintenanceConfirmScreen(
     val inlineCreationState by viewModel.inlineCreationState.collectAsState()
     val voiceContinueState by viewModel.voiceContinueState.collectAsState()
     val partialTranscript by viewModel.partialTranscript.collectAsState()
+    val productSearchQuery by viewModel.productSearchQuery.collectAsState()
+    val productSearchResults by viewModel.productSearchResults.collectAsState()
 
     // Stati editabili locali
     var selectedProduct by remember { mutableStateOf(initialData.productMatch) }
@@ -224,8 +233,13 @@ fun MaintenanceConfirmScreen(
             // Prodotto
             ProductSelectionCard(
                 match = selectedProduct,
-                onSearchClick = onNavigateToProductSearch,
-                onSelect = { selectedProduct = ProductMatch.Found(it) }
+                searchQuery = productSearchQuery,
+                searchResults = productSearchResults,
+                onSearchQueryChange = { viewModel.updateProductSearchQuery(it) },
+                onSelect = { product ->
+                    selectedProduct = ProductMatch.Found(product)
+                    viewModel.clearProductSearch()
+                }
             )
 
             // Tipo intervento
@@ -346,17 +360,37 @@ private fun WarningsCard(warnings: List<String>) {
     }
 }
 
+/**
+ * Card per la selezione del prodotto con ricerca inline.
+ *
+ * Stati supportati:
+ * - Found: prodotto identificato, mostra nome con ✓
+ * - Ambiguous: più candidati, mostra lista per selezione
+ * - NotFound: non trovato, mostra campo di ricerca espanso
+ *
+ * La ricerca inline evita di perdere i dati già compilati
+ * navigando ad altre schermate.
+ */
 @Composable
 private fun ProductSelectionCard(
     match: ProductMatch,
-    onSearchClick: () -> Unit,
+    searchQuery: String,
+    searchResults: List<Product>,
+    onSearchQueryChange: (String) -> Unit,
     onSelect: (Product) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp)
-    ) {
+    var showSearch by remember { mutableStateOf(match is ProductMatch.NotFound) }
+
+    // Se il match cambia a Found, nascondi la ricerca
+    LaunchedEffect(match) {
+        if (match is ProductMatch.Found) {
+            showSearch = false
+        }
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Header con titolo e toggle ricerca
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -366,15 +400,38 @@ private fun ProductSelectionCard(
                     "Prodotto *",
                     style = MaterialTheme.typography.labelLarge
                 )
-                IconButton(onClick = onSearchClick) {
-                    Icon(Icons.Default.Search, "Cerca")
+                // Mostra icona ricerca solo se non è già Found
+                if (match !is ProductMatch.Found) {
+                    IconButton(onClick = { showSearch = !showSearch }) {
+                        Icon(
+                            if (showSearch) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = if (showSearch) "Chiudi ricerca" else "Cerca prodotto"
+                        )
+                    }
+                } else {
+                    // Se Found, permetti di cambiare prodotto
+                    IconButton(onClick = { showSearch = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Cambia prodotto")
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            when (match) {
-                is ProductMatch.Found -> {
+            // Contenuto basato sullo stato
+            when {
+                // Ricerca attiva
+                showSearch -> {
+                    ProductSearchField(
+                        query = searchQuery,
+                        results = searchResults,
+                        onQueryChange = onSearchQueryChange,
+                        onProductSelect = onSelect
+                    )
+                }
+
+                // Prodotto trovato
+                match is ProductMatch.Found -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Check,
@@ -399,19 +456,20 @@ private fun ProductSelectionCard(
                     }
                 }
 
-                is ProductMatch.Ambiguous -> {
+                // Risultati ambigui - mostra candidati
+                match is ProductMatch.Ambiguous -> {
                     Text(
                         "Trovati ${match.candidates.size} risultati per \"${match.searchTerms}\":",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    match.candidates.take(3).forEach { product ->
+                    match.candidates.take(5).forEach { product ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onSelect(product) }
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
@@ -430,9 +488,17 @@ private fun ProductSelectionCard(
                             }
                         }
                     }
+
+                    // Link per cercare manualmente se i candidati non vanno bene
+                    TextButton(onClick = { showSearch = true }) {
+                        Icon(Icons.Default.Search, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Cerca altro prodotto")
+                    }
                 }
 
-                is ProductMatch.NotFound -> {
+                // Non trovato
+                match is ProductMatch.NotFound -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Warning,
@@ -455,6 +521,102 @@ private fun ProductSelectionCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Campo di ricerca prodotto con risultati dropdown.
+ */
+@Composable
+private fun ProductSearchField(
+    query: String,
+    results: List<Product>,
+    onQueryChange: (String) -> Unit,
+    onProductSelect: (Product) -> Unit
+) {
+    Column {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            label = { Text("Cerca prodotto...") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = null)
+            },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Pulisci")
+                    }
+                }
+            }
+        )
+
+        // Risultati ricerca
+        if (results.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column {
+                    results.take(5).forEach { product ->
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = product.name,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            supportingContent = {
+                                Row {
+                                    Text(
+                                        text = product.category,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    product.location?.let { loc ->
+                                        Text(
+                                            text = " • $loc",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            },
+                            leadingContent = {
+                                Icon(Icons.Default.Inventory2, contentDescription = null)
+                            },
+                            modifier = Modifier.clickable { onProductSelect(product) }
+                        )
+                        if (product != results.take(5).last()) {
+                            HorizontalDivider()
+                        }
+                    }
+
+                    // Indicatore se ci sono più risultati
+                    if (results.size > 5) {
+                        Text(
+                            text = "... e altri ${results.size - 5} risultati",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+            }
+        } else if (query.length >= 2) {
+            // Query inserita ma nessun risultato
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Nessun prodotto trovato per \"$query\"",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
