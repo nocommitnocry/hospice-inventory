@@ -178,6 +178,22 @@ interface LocationDao {
     @Query("SELECT COUNT(*) FROM locations")
     suspend fun countAll(): Int
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUGGERIMENTI AUTOCOMPLETE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Query("SELECT DISTINCT building FROM locations WHERE building IS NOT NULL AND building != '' AND isActive = 1 ORDER BY building")
+    suspend fun getDistinctBuildings(): List<String>
+
+    @Query("SELECT DISTINCT floor FROM locations WHERE floor IS NOT NULL AND floor != '' AND isActive = 1 ORDER BY floor")
+    suspend fun getDistinctFloors(): List<String>
+
+    @Query("SELECT DISTINCT floorName FROM locations WHERE floorName IS NOT NULL AND floorName != '' AND isActive = 1 ORDER BY floorName")
+    suspend fun getDistinctFloorNames(): List<String>
+
+    @Query("SELECT DISTINCT department FROM locations WHERE department IS NOT NULL AND department != '' AND isActive = 1 ORDER BY department")
+    suspend fun getDistinctDepartments(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(location: LocationEntity)
 

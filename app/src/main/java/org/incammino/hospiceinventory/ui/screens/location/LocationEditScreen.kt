@@ -2,6 +2,7 @@ package org.incammino.hospiceinventory.ui.screens.location
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -11,10 +12,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.incammino.hospiceinventory.R
 import org.incammino.hospiceinventory.domain.model.Location
+import org.incammino.hospiceinventory.domain.model.LocationType
+import org.incammino.hospiceinventory.ui.components.AutocompleteTextField
 
 /**
  * Schermata creazione/modifica ubicazione.
@@ -96,7 +101,14 @@ fun LocationEditScreen(
             LocationEditForm(
                 uiState = uiState,
                 onNameChange = viewModel::updateName,
+                onTypeChange = viewModel::updateType,
                 onParentChange = viewModel::updateParent,
+                onBuildingChange = viewModel::updateBuilding,
+                onFloorChange = viewModel::updateFloor,
+                onFloorNameChange = viewModel::updateFloorName,
+                onDepartmentChange = viewModel::updateDepartment,
+                onHasOxygenOutletChange = viewModel::updateHasOxygenOutlet,
+                onBedCountChange = viewModel::updateBedCount,
                 onAddressChange = viewModel::updateAddress,
                 onNotesChange = viewModel::updateNotes,
                 modifier = Modifier.padding(paddingValues)
@@ -112,7 +124,14 @@ fun LocationEditScreen(
 private fun LocationEditForm(
     uiState: LocationEditUiState,
     onNameChange: (String) -> Unit,
+    onTypeChange: (LocationType?) -> Unit,
     onParentChange: (String?, String?) -> Unit,
+    onBuildingChange: (String) -> Unit,
+    onFloorChange: (String) -> Unit,
+    onFloorNameChange: (String) -> Unit,
+    onDepartmentChange: (String) -> Unit,
+    onHasOxygenOutletChange: (Boolean) -> Unit,
+    onBedCountChange: (Int?) -> Unit,
     onAddressChange: (String) -> Unit,
     onNotesChange: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -122,20 +141,40 @@ private fun LocationEditForm(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Sezione Dati Ubicazione
+        // ═══════════════════════════════════════════════════════════════
+        // SEZIONE: IDENTIFICAZIONE
+        // ═══════════════════════════════════════════════════════════════
         item {
-            SectionCard(title = stringResource(R.string.section_main_data)) {
+            SectionCard(title = "Identificazione") {
+                // Nome (obbligatorio)
                 OutlinedTextField(
                     value = uiState.name,
                     onValueChange = onNameChange,
                     label = { Text(stringResource(R.string.location_name) + " *") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words
+                    ),
                     isError = uiState.name.isBlank() && uiState.error != null
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // Tipo (dropdown)
+                LocationTypeDropdown(
+                    selected = uiState.type,
+                    onSelect = onTypeChange
+                )
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SEZIONE: GERARCHIA
+        // ═══════════════════════════════════════════════════════════════
+        item {
+            SectionCard(title = "Gerarchia") {
+                // Sede padre (dropdown)
                 ParentLocationDropdown(
                     selected = uiState.parentId,
                     selectedName = uiState.parentName,
@@ -145,6 +184,100 @@ private fun LocationEditForm(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // Edificio (autocomplete)
+                AutocompleteTextField(
+                    value = uiState.building,
+                    onValueChange = onBuildingChange,
+                    suggestions = uiState.buildingSuggestions,
+                    label = "Edificio",
+                    placeholder = "Ala Vecchia, Ala Nuova..."
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Piano - codice e nome affiancati
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    AutocompleteTextField(
+                        value = uiState.floor,
+                        onValueChange = onFloorChange,
+                        suggestions = uiState.floorSuggestions,
+                        label = "Codice Piano",
+                        placeholder = "PT, P1, P-1",
+                        modifier = Modifier.weight(0.4f),
+                        capitalization = KeyboardCapitalization.Characters
+                    )
+
+                    AutocompleteTextField(
+                        value = uiState.floorName,
+                        onValueChange = onFloorNameChange,
+                        suggestions = uiState.floorNameSuggestions,
+                        label = "Nome Piano",
+                        placeholder = "Piano Terra",
+                        modifier = Modifier.weight(0.6f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Reparto (autocomplete)
+                AutocompleteTextField(
+                    value = uiState.department,
+                    onValueChange = onDepartmentChange,
+                    suggestions = uiState.departmentSuggestions,
+                    label = "Reparto/Area",
+                    placeholder = "Degenza, Direzione, Cucina..."
+                )
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SEZIONE: CARATTERISTICHE
+        // ═══════════════════════════════════════════════════════════════
+        item {
+            SectionCard(title = "Caratteristiche") {
+                // Attacco ossigeno
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Attacco ossigeno",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = uiState.hasOxygenOutlet,
+                        onCheckedChange = onHasOxygenOutletChange
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Posti letto
+                OutlinedTextField(
+                    value = uiState.bedCount?.toString() ?: "",
+                    onValueChange = { newValue ->
+                        onBedCountChange(newValue.toIntOrNull())
+                    },
+                    label = { Text("Posti letto") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number
+                    )
+                )
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SEZIONE: ALTRI DATI
+        // ═══════════════════════════════════════════════════════════════
+        item {
+            SectionCard(title = "Altri dati") {
+                // Indirizzo (per sedi esterne)
                 OutlinedTextField(
                     value = uiState.address,
                     onValueChange = onAddressChange,
@@ -155,6 +288,7 @@ private fun LocationEditForm(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // Note
                 OutlinedTextField(
                     value = uiState.notes,
                     onValueChange = onNotesChange,
@@ -169,6 +303,59 @@ private fun LocationEditForm(
         // Spazio in fondo
         item {
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * Dropdown per selezione tipo ubicazione.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LocationTypeDropdown(
+    selected: LocationType?,
+    onSelect: (LocationType?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = selected?.label ?: "Seleziona tipo",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Tipo ubicazione") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            singleLine = true
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            // Opzione "Nessuno" per resettare
+            DropdownMenuItem(
+                text = { Text("Non specificato") },
+                onClick = {
+                    onSelect(null)
+                    expanded = false
+                }
+            )
+
+            LocationType.entries.forEach { type ->
+                DropdownMenuItem(
+                    text = { Text(type.label) },
+                    onClick = {
+                        onSelect(type)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }
@@ -197,7 +384,7 @@ private fun ParentLocationDropdown(
             label = { Text(stringResource(R.string.location_parent)) },
             modifier = Modifier
                 .fillMaxWidth()
-                .menuAnchor(),
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
             singleLine = true
         )
@@ -221,7 +408,7 @@ private fun ParentLocationDropdown(
                     text = {
                         Column {
                             Text(location.name)
-                            location.address?.let {
+                            location.building?.let {
                                 Text(
                                     text = it,
                                     style = MaterialTheme.typography.bodySmall,

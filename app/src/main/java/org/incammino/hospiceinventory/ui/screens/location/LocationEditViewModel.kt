@@ -1,5 +1,6 @@
 package org.incammino.hospiceinventory.ui.screens.location
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.incammino.hospiceinventory.data.repository.LocationRepository
 import org.incammino.hospiceinventory.domain.model.Location
+import org.incammino.hospiceinventory.domain.model.LocationDefaults
+import org.incammino.hospiceinventory.domain.model.LocationType
 import java.util.UUID
 import javax.inject.Inject
 
@@ -25,8 +28,21 @@ data class LocationEditUiState(
     val address: String = "",
     val notes: String = "",
 
-    // Liste per dropdown
+    // Nuovi campi gerarchia/caratteristiche
+    val type: LocationType? = null,
+    val building: String = "",
+    val floor: String = "",
+    val floorName: String = "",
+    val department: String = "",
+    val hasOxygenOutlet: Boolean = false,
+    val bedCount: Int? = null,
+
+    // Liste per dropdown/autocomplete
     val availableParents: List<Location> = emptyList(),
+    val buildingSuggestions: List<String> = emptyList(),
+    val floorSuggestions: List<String> = emptyList(),
+    val floorNameSuggestions: List<String> = emptyList(),
+    val departmentSuggestions: List<String> = emptyList(),
 
     // Metadati
     val isNew: Boolean = true,
@@ -45,6 +61,10 @@ class LocationEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "LocationEditVM"
+    }
+
     private val locationId: String? = savedStateHandle.get<String>("locationId")
         ?.takeIf { it != "new" }
 
@@ -53,8 +73,39 @@ class LocationEditViewModel @Inject constructor(
 
     init {
         loadParentLocations()
+        loadSuggestions()
         if (locationId != null) {
             loadLocation(locationId)
+        }
+    }
+
+    /**
+     * Carica i suggerimenti per autocomplete.
+     */
+    private fun loadSuggestions() {
+        viewModelScope.launch {
+            try {
+                val suggestions = locationRepository.getAllSuggestions()
+                _uiState.update { state ->
+                    state.copy(
+                        buildingSuggestions = (LocationDefaults.COMMON_BUILDINGS + suggestions.buildings).distinct(),
+                        floorSuggestions = (LocationDefaults.COMMON_FLOORS + suggestions.floors).distinct(),
+                        floorNameSuggestions = (LocationDefaults.COMMON_FLOOR_NAMES + suggestions.floorNames).distinct(),
+                        departmentSuggestions = (LocationDefaults.COMMON_DEPARTMENTS + suggestions.departments).distinct()
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load suggestions", e)
+                // Fallback ai soli default
+                _uiState.update { state ->
+                    state.copy(
+                        buildingSuggestions = LocationDefaults.COMMON_BUILDINGS,
+                        floorSuggestions = LocationDefaults.COMMON_FLOORS,
+                        floorNameSuggestions = LocationDefaults.COMMON_FLOOR_NAMES,
+                        departmentSuggestions = LocationDefaults.COMMON_DEPARTMENTS
+                    )
+                }
+            }
         }
     }
 
@@ -88,8 +139,15 @@ class LocationEditViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             name = location.name,
+                            type = location.type,
                             parentId = location.parentId,
                             parentName = parentName,
+                            building = location.building ?: "",
+                            floor = location.floor ?: "",
+                            floorName = location.floorName ?: "",
+                            department = location.department ?: "",
+                            hasOxygenOutlet = location.hasOxygenOutlet,
+                            bedCount = location.bedCount,
                             address = location.address ?: "",
                             notes = location.notes ?: "",
                             isNew = false,
@@ -129,6 +187,34 @@ class LocationEditViewModel @Inject constructor(
         _uiState.update { it.copy(notes = value) }
     }
 
+    fun updateType(value: LocationType?) {
+        _uiState.update { it.copy(type = value) }
+    }
+
+    fun updateBuilding(value: String) {
+        _uiState.update { it.copy(building = value) }
+    }
+
+    fun updateFloor(value: String) {
+        _uiState.update { it.copy(floor = value.uppercase()) }
+    }
+
+    fun updateFloorName(value: String) {
+        _uiState.update { it.copy(floorName = value) }
+    }
+
+    fun updateDepartment(value: String) {
+        _uiState.update { it.copy(department = value) }
+    }
+
+    fun updateHasOxygenOutlet(value: Boolean) {
+        _uiState.update { it.copy(hasOxygenOutlet = value) }
+    }
+
+    fun updateBedCount(value: Int?) {
+        _uiState.update { it.copy(bedCount = value) }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // VALIDAZIONE E SALVATAGGIO
     // ═══════════════════════════════════════════════════════════════════════════
@@ -162,11 +248,19 @@ class LocationEditViewModel @Inject constructor(
                 val location = Location(
                     id = locationId ?: UUID.randomUUID().toString(),
                     name = state.name.trim(),
+                    type = state.type,
                     parentId = state.parentId,
+                    floor = state.floor.takeIf { it.isNotBlank() },
+                    floorName = state.floorName.takeIf { it.isNotBlank() },
+                    department = state.department.takeIf { it.isNotBlank() },
+                    building = state.building.takeIf { it.isNotBlank() },
+                    hasOxygenOutlet = state.hasOxygenOutlet,
+                    bedCount = state.bedCount,
                     address = state.address.takeIf { it.isNotBlank() },
                     coordinates = null,
                     notes = state.notes.takeIf { it.isNotBlank() },
-                    isActive = true
+                    isActive = true,
+                    needsCompletion = false
                 )
 
                 val id = if (state.isNew) {

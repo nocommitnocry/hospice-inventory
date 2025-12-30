@@ -458,6 +458,8 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - **VoiceContinueButton**: Input vocale incrementale nelle ConfirmScreen
 - **InlineEntityCreator**: Creazione rapida entità mancanti
 - **AlertBanner**: Card colorata per scadenze
+- **SelectableDropdownField**: Campo con dropdown + digitazione libera (Categoria, Ubicazione, Fornitore)
+- **AutocompleteTextField**: Campo testo con suggerimenti filtrati (Edificio, Piano, Reparto)
 
 ---
 
@@ -483,6 +485,17 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
   - [x] Context preservation per VoiceContinue (FormData)
   - [x] Memory cleanup su Salva/Annulla/Back/Swipe
   - [x] BackHandler in tutte le ConfirmScreen
+- [x] **Fase 5: Unified Selectors** ✅ 30/12/2025
+  - [x] SelectableDropdownField componente riutilizzabile
+  - [x] ProductEditScreen: Categoria, Ubicazione, Fornitore con suggerimenti DB
+  - [x] ProductConfirmScreen: CategorySelector con categorie dal DB
+  - [x] getAllSuppliers() in ProductDao/Repository
+- [x] **Fase 6: LocationEditScreen Enhancement** ✅ 30/12/2025
+  - [x] AutocompleteTextField componente riutilizzabile
+  - [x] LocationDefaults per valori predefiniti Hospice
+  - [x] Query DISTINCT per building/floor/floorName/department
+  - [x] Form completo: Identificazione, Gerarchia, Caratteristiche, Altri dati
+  - [x] LocationTypeDropdown per tipo ubicazione
 
 #### Infrastruttura & UI
 - [x] Room entities, DAOs, Database
@@ -528,7 +541,21 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 ## 🐛 Bugfix Recenti
 
-### Sessione 30/12/2025 - Voice Recognition & Memory Cleanup
+### Sessione 30/12/2025 (pomeriggio) - Unified Selectors & LocationEditScreen
+
+**F4 - Unified Selectors** (FEATURE)
+- Problema: Inconsistenze dati per Categoria/Ubicazione/Fornitore (es. "Ala Vecchia" vs "ala vecchia")
+- Soluzione: `SelectableDropdownField` - dropdown con digitazione libera e suggerimenti dal DB
+- File nuovi: `SelectableDropdownField.kt`
+- File modificati: `ProductDao.kt` (+getAllSuppliers), `ProductRepository.kt`, `ProductEditViewModel.kt`, `ProductEditScreen.kt`, `ProductConfirmViewModel.kt`, `ProductConfirmScreen.kt`
+
+**F5 - LocationEditScreen Enhancement** (FEATURE)
+- Problema: LocationEditScreen incompleto rispetto a LocationConfirmScreen
+- Soluzione: Form completo con 4 sezioni + autocomplete per campi gerarchia
+- File nuovi: `AutocompleteTextField.kt`, `LocationDefaults.kt`
+- File modificati: `SupportDaos.kt` (+query DISTINCT), `LocationRepository.kt` (+LocationSuggestions), `LocationEditViewModel.kt` (nuovi campi + loadSuggestions), `LocationEditScreen.kt` (form completo)
+
+### Sessione 30/12/2025 (mattina) - Voice Recognition & Memory Cleanup
 
 **F1 - Tap-to-Stop Voice Recognition** (FEATURE)
 - Pattern semplificato: `isContinuousListening` flag
@@ -617,3 +644,5 @@ fun isActiveTaskComplete()
 - `TAP_TO_STOP_SPEC.md` - Implementato 30/12/2025
 - `SPEC_FIX_VOICE_CONTINUE_CONTEXT.md` - Implementato 30/12/2025
 - `SPEC_MEMORY_CLEANUP.md` - Implementato 30/12/2025
+- `SPEC-unified-selectors.md` - Implementato 30/12/2025
+- `SPEC-LocationEditScreen-Enhancement.md` - Implementato 30/12/2025

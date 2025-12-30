@@ -84,6 +84,47 @@ class LocationRepository @Inject constructor(
     suspend fun countAll(): Int = locationDao.countAll()
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // SUGGERIMENTI AUTOCOMPLETE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Edifici distinti per autocomplete.
+     */
+    suspend fun getDistinctBuildings(): List<String> = locationDao.getDistinctBuildings()
+
+    /**
+     * Piani (codice) distinti per autocomplete.
+     */
+    suspend fun getDistinctFloors(): List<String> = locationDao.getDistinctFloors()
+
+    /**
+     * Nomi piani distinti per autocomplete.
+     */
+    suspend fun getDistinctFloorNames(): List<String> = locationDao.getDistinctFloorNames()
+
+    /**
+     * Reparti distinti per autocomplete.
+     */
+    suspend fun getDistinctDepartments(): List<String> = locationDao.getDistinctDepartments()
+
+    /**
+     * Tutti i suggerimenti in un colpo solo (per UI).
+     */
+    data class LocationSuggestions(
+        val buildings: List<String>,
+        val floors: List<String>,
+        val floorNames: List<String>,
+        val departments: List<String>
+    )
+
+    suspend fun getAllSuggestions(): LocationSuggestions = LocationSuggestions(
+        buildings = getDistinctBuildings(),
+        floors = getDistinctFloors(),
+        floorNames = getDistinctFloorNames(),
+        departments = getDistinctDepartments()
+    )
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // CRUD
     // ═══════════════════════════════════════════════════════════════════════════
 
