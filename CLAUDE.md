@@ -75,6 +75,7 @@ HospiceInventory/
 │       │   │   └── navigation/           # Navigation.kt, NavigationWithCleanup.kt
 │       │   ├── service/
 │       │   │   ├── voice/                # VoiceService, GeminiService, ExtractionPrompts
+│       │   │   ├── backup/               # GoogleDriveService, ExcelExportService, BackupManager
 │       │   │   ├── notification/         # NotificationWorker
 │       │   │   └── sync/                 # SyncWorker, Firebase
 │       │   ├── di/                       # Hilt modules
@@ -113,6 +114,8 @@ HospiceInventory/
 | Background | WorkManager | 2.10.0 |
 | Cloud | Firebase (Firestore, Auth, FCM) | BOM 33.5.1 |
 | Date/Time | Kotlinx Datetime | 0.6.1 |
+| Google Drive | Google API Client | 2.2.0 |
+| Excel Export | Apache POI | 5.2.5 |
 
 ---
 
@@ -419,6 +422,102 @@ PROBLEMA SEGNALATO:
 Cordiali saluti,
 Hospice In Cammino - Via dei Mille 8/10 - 20081 Abbiategrasso (MI)
 ```
+
+---
+
+## ☁️ Google Drive Backup (v1.0 - 31/12/2025)
+
+### Architettura
+
+```
+DataManagementScreen
+├── GoogleDriveSection (UI)
+│   ├── Connetti/Disconnetti Google
+│   ├── Backup manuale
+│   ├── Export Excel
+│   └── Lista backup + Ripristina
+│
+├── DataManagementViewModel
+│   ├── backupState: BackupUiState
+│   ├── performBackup()
+│   ├── exportToExcel()
+│   └── confirmRestore()
+│
+└── Services (service/backup/)
+    ├── GoogleDriveService     # OAuth, upload/download, folder structure
+    ├── ExcelExportService     # Genera .xlsx con Apache POI
+    ├── BackupManager          # Orchestratore operazioni
+    └── BackupWorker           # Backup automatico schedulato (18:00)
+```
+
+### Struttura Cartelle su Drive
+
+```
+Google Drive/
+└── HospiceInventory/
+    ├── backups/
+    │   ├── backup_2025-12-31_1800.db
+    │   ├── backup_2025-12-30_1800.db
+    │   └── ... (ultimi 7 mantenuti)
+    └── exports/
+        ├── inventario_2025-12-31.xlsx
+        └── ...
+```
+
+### GoogleDriveService - API
+
+```kotlin
+@Singleton
+class GoogleDriveService @Inject constructor(...) {
+    fun isSignedIn(): Boolean
+    fun getSignInIntent(): Intent
+    suspend fun initialize(account: GoogleSignInAccount): DriveResult<Unit>
+    suspend fun uploadBackup(localFile: File, fileName: String): DriveResult<String>
+    suspend fun uploadExport(localFile: File, fileName: String): DriveResult<String>
+    suspend fun listBackups(): DriveResult<List<BackupInfo>>
+    suspend fun downloadBackup(fileId: String, destinationFile: File): DriveResult<File>
+    suspend fun cleanupOldBackups(keepCount: Int = 7): DriveResult<Int>
+    suspend fun signOut()
+}
+
+sealed class DriveResult<out T> {
+    data class Success<T>(val data: T) : DriveResult<T>()
+    data class Error(val message: String, val exception: Exception?) : DriveResult<Nothing>()
+    data object NotSignedIn : DriveResult<Nothing>()
+}
+```
+
+### ExcelExportService - Sheet generati
+
+| Sheet | Colonne |
+|-------|---------|
+| Prodotti | ID, Barcode, Nome, Descrizione, Categoria, Ubicazione, Fornitore, Prezzo, Tipo Conto, N. Fattura, Date (acquisto, garanzia, manutenzione), Note, Attivo |
+| Manutenzioni | ID, ID Prodotto, ID Manutentore, Data, Tipo, Esito, Costo, N. Fattura, In Garanzia, Email flags, Note |
+| Manutentori | ID, Nome, Email, Telefono, Indirizzo completo, P.IVA, Referente, Specializzazione, Fornitore, Note, Attivo |
+| Ubicazioni | ID, Nome, Tipo, Edificio, Piano, Nome Piano, Reparto, Posti Letto, Presa O2, Indirizzo, Note, Attivo |
+
+**Nota**: `autoSizeColumn()` non disponibile su Android (usa java.awt). Usare `setColumnWidth()` con valori fissi.
+
+### BackupWorker - Scheduling
+
+```kotlin
+// Backup automatico giornaliero alle 18:00
+BackupWorker.schedule(context)  // Attiva
+BackupWorker.cancel(context)    // Disattiva
+BackupWorker.isScheduled(context)  // Verifica stato
+
+// Constraints:
+// - NetworkType.CONNECTED
+// - RequiresBatteryNotLow
+// - Retry con backoff esponenziale (max 3 tentativi)
+```
+
+### Configurazione OAuth
+
+- **Google Cloud Project**: `inventario-462506`
+- **Scope**: `drive.file` (solo file creati dall'app)
+- **Account target**: `@hospicediabbiategrasso.it` (Workspace)
+- **Client ID**: Non richiesto nel codice (gestito da Play Services)
 
 ---
 

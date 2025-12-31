@@ -135,8 +135,25 @@ class ExcelExportService @Inject constructor(
             row.createCell(col).setCellValue(if (product.isActive) "Si" else "No")
         }
 
-        // Auto-size colonne
-        headers.indices.forEach { sheet.autoSizeColumn(it) }
+        // Larghezze fisse colonne (autoSizeColumn usa java.awt non disponibile su Android)
+        sheet.setColumnWidth(0, 12 * 256)  // ID
+        sheet.setColumnWidth(1, 15 * 256)  // Barcode
+        sheet.setColumnWidth(2, 35 * 256)  // Nome
+        sheet.setColumnWidth(3, 40 * 256)  // Descrizione
+        sheet.setColumnWidth(4, 20 * 256)  // Categoria
+        sheet.setColumnWidth(5, 25 * 256)  // Ubicazione
+        sheet.setColumnWidth(6, 25 * 256)  // Fornitore
+        sheet.setColumnWidth(7, 12 * 256)  // Prezzo
+        sheet.setColumnWidth(8, 15 * 256)  // Tipo Conto
+        sheet.setColumnWidth(9, 18 * 256)  // Numero Fattura
+        sheet.setColumnWidth(10, 14 * 256) // Data Acquisto
+        sheet.setColumnWidth(11, 14 * 256) // Inizio Garanzia
+        sheet.setColumnWidth(12, 14 * 256) // Fine Garanzia
+        sheet.setColumnWidth(13, 20 * 256) // Frequenza Manutenzione
+        sheet.setColumnWidth(14, 18 * 256) // Ultima Manutenzione
+        sheet.setColumnWidth(15, 18 * 256) // Prossima Manutenzione
+        sheet.setColumnWidth(16, 40 * 256) // Note
+        sheet.setColumnWidth(17, 8 * 256)  // Attivo
         Log.d(TAG, "Sheet Prodotti: ${products.size} righe")
     }
 
@@ -185,7 +202,19 @@ class ExcelExportService @Inject constructor(
             row.createCell(col).setCellValue(maintenance.notes ?: "")
         }
 
-        headers.indices.forEach { sheet.autoSizeColumn(it) }
+        // Larghezze fisse colonne
+        sheet.setColumnWidth(0, 12 * 256)  // ID
+        sheet.setColumnWidth(1, 12 * 256)  // ID Prodotto
+        sheet.setColumnWidth(2, 12 * 256)  // ID Manutentore
+        sheet.setColumnWidth(3, 18 * 256)  // Data
+        sheet.setColumnWidth(4, 15 * 256)  // Tipo
+        sheet.setColumnWidth(5, 20 * 256)  // Esito
+        sheet.setColumnWidth(6, 12 * 256)  // Costo
+        sheet.setColumnWidth(7, 18 * 256)  // Numero Fattura
+        sheet.setColumnWidth(8, 12 * 256)  // In Garanzia
+        sheet.setColumnWidth(9, 15 * 256)  // Email Richiesta
+        sheet.setColumnWidth(10, 15 * 256) // Email Report
+        sheet.setColumnWidth(11, 40 * 256) // Note
         Log.d(TAG, "Sheet Manutenzioni: ${maintenances.size} righe")
     }
 
@@ -232,7 +261,21 @@ class ExcelExportService @Inject constructor(
             row.createCell(col).setCellValue(if (maintainer.isActive) "Si" else "No")
         }
 
-        headers.indices.forEach { sheet.autoSizeColumn(it) }
+        // Larghezze fisse colonne
+        sheet.setColumnWidth(0, 12 * 256)  // ID
+        sheet.setColumnWidth(1, 30 * 256)  // Nome
+        sheet.setColumnWidth(2, 30 * 256)  // Email
+        sheet.setColumnWidth(3, 18 * 256)  // Telefono
+        sheet.setColumnWidth(4, 35 * 256)  // Indirizzo
+        sheet.setColumnWidth(5, 20 * 256)  // Citta
+        sheet.setColumnWidth(6, 8 * 256)   // CAP
+        sheet.setColumnWidth(7, 8 * 256)   // Provincia
+        sheet.setColumnWidth(8, 15 * 256)  // P.IVA
+        sheet.setColumnWidth(9, 25 * 256)  // Referente
+        sheet.setColumnWidth(10, 25 * 256) // Specializzazione
+        sheet.setColumnWidth(11, 10 * 256) // Fornitore
+        sheet.setColumnWidth(12, 40 * 256) // Note
+        sheet.setColumnWidth(13, 8 * 256)  // Attivo
         Log.d(TAG, "Sheet Manutentori: ${maintainers.size} righe")
     }
 
@@ -277,7 +320,19 @@ class ExcelExportService @Inject constructor(
             row.createCell(col).setCellValue(if (location.isActive) "Si" else "No")
         }
 
-        headers.indices.forEach { sheet.autoSizeColumn(it) }
+        // Larghezze fisse colonne
+        sheet.setColumnWidth(0, 12 * 256)  // ID
+        sheet.setColumnWidth(1, 30 * 256)  // Nome
+        sheet.setColumnWidth(2, 15 * 256)  // Tipo
+        sheet.setColumnWidth(3, 20 * 256)  // Edificio
+        sheet.setColumnWidth(4, 10 * 256)  // Piano
+        sheet.setColumnWidth(5, 20 * 256)  // Nome Piano
+        sheet.setColumnWidth(6, 20 * 256)  // Reparto
+        sheet.setColumnWidth(7, 12 * 256)  // Posti Letto
+        sheet.setColumnWidth(8, 15 * 256)  // Presa Ossigeno
+        sheet.setColumnWidth(9, 35 * 256)  // Indirizzo
+        sheet.setColumnWidth(10, 40 * 256) // Note
+        sheet.setColumnWidth(11, 8 * 256)  // Attivo
         Log.d(TAG, "Sheet Ubicazioni: ${locations.size} righe")
     }
 }
