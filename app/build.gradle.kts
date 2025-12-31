@@ -72,6 +72,12 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Apache POI exclusions
+            excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/LICENSE"
+            excludes += "META-INF/LICENSE.txt"
+            excludes += "META-INF/NOTICE"
+            excludes += "META-INF/NOTICE.txt"
         }
     }
 }
@@ -154,6 +160,13 @@ dependencies {
 
     // Accompanist (Permissions)
     implementation(libs.accompanist.permissions)
+
+    // Google Drive API
+    implementation(libs.google.api.client.android)
+    implementation(libs.google.api.services.drive)
+
+    // Excel Export (Apache POI)
+    implementation(libs.apache.poi.ooxml)
 
     // Testing
     testImplementation(libs.junit)

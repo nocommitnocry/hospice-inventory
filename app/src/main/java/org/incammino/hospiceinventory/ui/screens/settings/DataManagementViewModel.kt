@@ -1,7 +1,9 @@
 package org.incammino.hospiceinventory.ui.screens.settings
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,6 +14,10 @@ import org.incammino.hospiceinventory.data.repository.LocationRepository
 import org.incammino.hospiceinventory.data.repository.MaintainerRepository
 import org.incammino.hospiceinventory.data.repository.MaintenanceRepository
 import org.incammino.hospiceinventory.data.repository.ProductRepository
+import org.incammino.hospiceinventory.service.backup.BackupInfo
+import org.incammino.hospiceinventory.service.backup.BackupManager
+import org.incammino.hospiceinventory.service.backup.BackupResult
+import org.incammino.hospiceinventory.service.backup.GoogleDriveService
 import javax.inject.Inject
 
 /**
@@ -43,6 +49,19 @@ data class DataManagementUiState(
 )
 
 /**
+ * UI State per backup Google Drive.
+ */
+data class BackupUiState(
+    val isSignedIn: Boolean = false,
+    val accountEmail: String? = null,
+    val isOperationInProgress: Boolean = false,
+    val backups: List<BackupInfo> = emptyList(),
+    val lastBackupResult: String? = null,
+    val showRestoreConfirmDialog: Boolean = false,
+    val pendingRestoreBackup: BackupInfo? = null
+)
+
+/**
  * ViewModel per la gestione dati.
  */
 @HiltViewModel
@@ -50,14 +69,20 @@ class DataManagementViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val maintainerRepository: MaintainerRepository,
     private val maintenanceRepository: MaintenanceRepository,
-    private val locationRepository: LocationRepository
+    private val locationRepository: LocationRepository,
+    private val backupManager: BackupManager,
+    private val driveService: GoogleDriveService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DataManagementUiState())
     val uiState: StateFlow<DataManagementUiState> = _uiState.asStateFlow()
 
+    private val _backupState = MutableStateFlow(BackupUiState())
+    val backupState: StateFlow<BackupUiState> = _backupState.asStateFlow()
+
     init {
         loadCounts()
+        checkSignInStatus()
     }
 
     /**
@@ -233,5 +258,209 @@ class DataManagementViewModel @Inject constructor(
      */
     fun clearResult() {
         _uiState.update { it.copy(lastOperationResult = null) }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GOOGLE DRIVE BACKUP
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Verifica lo stato del login Google.
+     */
+    fun checkSignInStatus() {
+        val isSignedIn = driveService.isSignedIn()
+        val email = driveService.getCurrentAccount()?.email
+        _backupState.update { it.copy(isSignedIn = isSignedIn, accountEmail = email) }
+
+        if (isSignedIn) {
+            loadBackupsList()
+        }
+    }
+
+    /**
+     * Ottiene l'intent per il sign-in Google.
+     */
+    fun getSignInIntent(): Intent = driveService.getSignInIntent()
+
+    /**
+     * Callback dopo sign-in riuscito.
+     */
+    fun onSignInResult(account: GoogleSignInAccount) {
+        viewModelScope.launch {
+            driveService.initialize(account)
+            checkSignInStatus()
+        }
+    }
+
+    /**
+     * Esegue backup manuale.
+     */
+    fun performBackup() {
+        viewModelScope.launch {
+            _backupState.update { it.copy(isOperationInProgress = true, lastBackupResult = null) }
+
+            when (val result = backupManager.performBackup()) {
+                is BackupResult.Success -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            lastBackupResult = result.message
+                        )
+                    }
+                    loadBackupsList()
+                }
+                is BackupResult.Error -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            lastBackupResult = "Errore: ${result.message}"
+                        )
+                    }
+                }
+                BackupResult.NotSignedIn -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            lastBackupResult = "Effettua il login prima"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Esporta dati in Excel e carica su Drive.
+     */
+    fun exportToExcel() {
+        viewModelScope.launch {
+            _backupState.update { it.copy(isOperationInProgress = true, lastBackupResult = null) }
+
+            when (val result = backupManager.exportToExcel()) {
+                is BackupResult.Success -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            lastBackupResult = result.message
+                        )
+                    }
+                }
+                is BackupResult.Error -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            lastBackupResult = "Errore: ${result.message}"
+                        )
+                    }
+                }
+                BackupResult.NotSignedIn -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            lastBackupResult = "Effettua il login prima"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Richiede conferma per il ripristino.
+     */
+    fun requestRestoreConfirmation(backup: BackupInfo) {
+        _backupState.update {
+            it.copy(
+                showRestoreConfirmDialog = true,
+                pendingRestoreBackup = backup
+            )
+        }
+    }
+
+    /**
+     * Annulla il ripristino pendente.
+     */
+    fun cancelRestore() {
+        _backupState.update {
+            it.copy(
+                showRestoreConfirmDialog = false,
+                pendingRestoreBackup = null
+            )
+        }
+    }
+
+    /**
+     * Conferma ed esegue il ripristino.
+     */
+    fun confirmRestore() {
+        val backup = _backupState.value.pendingRestoreBackup ?: return
+
+        viewModelScope.launch {
+            _backupState.update {
+                it.copy(
+                    showRestoreConfirmDialog = false,
+                    isOperationInProgress = true,
+                    lastBackupResult = null
+                )
+            }
+
+            when (val result = backupManager.restoreBackup(backup.id, backup.name)) {
+                is BackupResult.Success -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            pendingRestoreBackup = null,
+                            lastBackupResult = result.message
+                        )
+                    }
+                }
+                is BackupResult.Error -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            pendingRestoreBackup = null,
+                            lastBackupResult = "Errore: ${result.message}"
+                        )
+                    }
+                }
+                BackupResult.NotSignedIn -> {
+                    _backupState.update {
+                        it.copy(
+                            isOperationInProgress = false,
+                            pendingRestoreBackup = null,
+                            lastBackupResult = "Effettua il login prima"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Carica la lista dei backup disponibili.
+     */
+    private fun loadBackupsList() {
+        viewModelScope.launch {
+            val backups = backupManager.listBackups()
+            _backupState.update { it.copy(backups = backups) }
+        }
+    }
+
+    /**
+     * Logout da Google Drive.
+     */
+    fun signOut() {
+        viewModelScope.launch {
+            driveService.signOut()
+            checkSignInStatus()
+            _backupState.update { it.copy(backups = emptyList()) }
+        }
+    }
+
+    /**
+     * Pulisce il risultato backup.
+     */
+    fun clearBackupResult() {
+        _backupState.update { it.copy(lastBackupResult = null) }
     }
 }

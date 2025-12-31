@@ -58,6 +58,25 @@
 
 -keep class com.google.mlkit.** { *; }
 
+# ─── GOOGLE DRIVE API ─────────────────────────────────────────────────────
+
+-keep class com.google.api.** { *; }
+-keep class com.google.http.** { *; }
+-dontwarn com.google.api.client.extensions.android.**
+-dontwarn com.google.api.client.googleapis.extensions.android.**
+-dontwarn com.google.api.client.http.**
+
+# ─── APACHE POI (EXCEL) ───────────────────────────────────────────────────
+
+-dontwarn org.apache.poi.**
+-dontwarn org.apache.xmlbeans.**
+-dontwarn org.apache.commons.**
+-dontwarn org.openxmlformats.**
+-dontwarn com.microsoft.**
+-keep class org.apache.poi.** { *; }
+-keep class org.apache.xmlbeans.** { *; }
+-keep class org.openxmlformats.** { *; }
+
 # ─── APP MODELS ────────────────────────────────────────────────────────────
 
 # Keep all entity classes
