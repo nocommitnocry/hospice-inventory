@@ -31,7 +31,8 @@ sealed class BackupResult {
 class BackupManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val driveService: GoogleDriveService,
-    private val excelExportService: ExcelExportService
+    private val excelExportService: ExcelExportService,
+    private val database: HospiceDatabase
 ) {
     companion object {
         private const val TAG = "BackupManager"
@@ -63,6 +64,10 @@ class BackupManager @Inject constructor(
 
             val backupFileName = "backup_$timestamp.db"
             val tempFile = File(context.cacheDir, backupFileName)
+
+            // Forza checkpoint WAL - scrive tutti i dati pending nel .db principale
+            database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+            Log.d(TAG, "WAL checkpoint completato")
 
             // Copia il database
             dbFile.copyTo(tempFile, overwrite = true)

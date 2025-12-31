@@ -611,6 +611,15 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 - [x] GeminiTtsService (voce Kore italiana)
 - [x] TtsTextCleaner (rimuove markdown per TTS)
 
+#### Google Drive Backup (v1.0)
+- [x] **Fase 7: Google Drive Backup** ✅ 31/12/2025
+  - [x] GoogleDriveService (OAuth, upload/download, folder management)
+  - [x] ExcelExportService (genera .xlsx con 4 sheet)
+  - [x] BackupManager (orchestratore backup/restore/export)
+  - [x] BackupWorker (backup automatico schedulato)
+  - [x] UI in DataManagementScreen (sezione Google Drive)
+  - [x] Fix autoSizeColumn() crash (usa setColumnWidth())
+
 ### 🔲 Da Fare
 
 #### Priorità Alta
@@ -639,6 +648,24 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 ---
 
 ## 🐛 Bugfix Recenti
+
+### Sessione 31/12/2025 - Google Drive Backup
+
+**F7 - Google Drive Backup** (FEATURE)
+- Implementato sistema completo di backup su Google Drive
+- File nuovi: `GoogleDriveService.kt`, `ExcelExportService.kt`, `BackupManager.kt`, `BackupWorker.kt`
+- File modificati: `libs.versions.toml`, `app/build.gradle.kts`, `proguard-rules.pro`, `DataManagementViewModel.kt`, `DataManagementScreen.kt`
+- Dipendenze aggiunte: Google API Client 2.2.0, Apache POI 5.2.5
+
+**B1 - Fix autoSizeColumn() crash** (BUGFIX)
+- Problema: `autoSizeColumn()` di Apache POI usa `java.awt` non disponibile su Android
+- Soluzione: Sostituito con `setColumnWidth()` con valori fissi per ogni colonna
+- File: `ExcelExportService.kt`
+
+**B2 - WAL checkpoint prima del backup** (BUGFIX)
+- Problema: Backup poteva essere incompleto se dati pending nel WAL
+- Soluzione: `PRAGMA wal_checkpoint(TRUNCATE)` prima della copia
+- File: `BackupManager.kt` (+HospiceDatabase dependency)
 
 ### Sessione 30/12/2025 (pomeriggio) - Unified Selectors & LocationEditScreen
 
@@ -750,3 +777,4 @@ fun isActiveTaskComplete()
 - `SPEC_MEMORY_CLEANUP.md` - Implementato 30/12/2025
 - `SPEC-unified-selectors.md` - Implementato 30/12/2025
 - `SPEC-LocationEditScreen-Enhancement.md` - Implementato 30/12/2025
+- `SPEC-GoogleDrive-Backup.md` - Implementato 31/12/2025
