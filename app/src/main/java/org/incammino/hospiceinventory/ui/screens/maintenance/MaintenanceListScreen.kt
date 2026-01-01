@@ -30,9 +30,18 @@ fun MaintenanceListScreen(
     onNavigateBack: () -> Unit,
     onNavigateToProduct: (String) -> Unit,
     onNavigateToMaintenance: (String) -> Unit,
+    initialFilter: String? = null,
     viewModel: MaintenanceListViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Imposta il filtro iniziale se specificato
+    LaunchedEffect(initialFilter) {
+        initialFilter?.let { filterName ->
+            MaintenanceFilter.entries.find { it.name.equals(filterName, ignoreCase = true) }
+                ?.let { viewModel.setFilter(it) }
+        }
+    }
 
     Scaffold(
         topBar = {

@@ -113,6 +113,8 @@ class VoiceProductViewModel @Inject constructor(
     fun startListening() {
         fullTranscript = ""
         _state.value = VoiceProductState.Listening
+        // BUG-17 fix: Abilita modalità Voice Dump per evitare feedback confusi
+        voiceService.voiceDumpMode = true
         voiceService.startManualListening()
     }
 
@@ -310,5 +312,7 @@ class VoiceProductViewModel @Inject constructor(
         _state.value = VoiceProductState.Idle
         // Resetta anche VoiceService per evitare che vecchi stati vengano riprocessati
         voiceService.resetState()
+        // BUG-17 fix: Ripristina modalità normale
+        voiceService.voiceDumpMode = false
     }
 }

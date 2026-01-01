@@ -112,6 +112,7 @@ fun MaintenanceEditScreen(
                 onTypeChange = viewModel::updateType,
                 onOutcomeChange = viewModel::updateOutcome,
                 onNotesChange = viewModel::updateNotes,
+                onDurationChange = viewModel::updateDurationMinutes,
                 onCostChange = viewModel::updateCost,
                 onInvoiceNumberChange = viewModel::updateInvoiceNumber,
                 onIsWarrantyWorkChange = viewModel::updateIsWarrantyWork,
@@ -136,6 +137,7 @@ private fun MaintenanceEditForm(
     onTypeChange: (MaintenanceType?) -> Unit,
     onOutcomeChange: (MaintenanceOutcome?) -> Unit,
     onNotesChange: (String) -> Unit,
+    onDurationChange: (String) -> Unit,
     onCostChange: (String) -> Unit,
     onInvoiceNumberChange: (String) -> Unit,
     onIsWarrantyWorkChange: (Boolean) -> Unit,
@@ -198,6 +200,18 @@ private fun MaintenanceEditForm(
                     selected = uiState.outcome,
                     outcomes = uiState.outcomeTypes,
                     onSelect = onOutcomeChange
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Durata
+                OutlinedTextField(
+                    value = uiState.durationMinutes,
+                    onValueChange = { onDurationChange(it.filter { c -> c.isDigit() }) },
+                    label = { Text("Durata (minuti)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))

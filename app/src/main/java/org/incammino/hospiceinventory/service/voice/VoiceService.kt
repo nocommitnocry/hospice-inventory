@@ -144,6 +144,16 @@ class VoiceService @Inject constructor(
     var onPartialResult: ((String) -> Unit)? = null
 
     /**
+     * Modalità Voice Dump: quando true, NON triggera il callback onResult.
+     * Questo evita che il flusso conversazionale legacy venga attivato
+     * quando usiamo il pattern Voice Dump + Visual Confirm.
+     *
+     * BUG-17 fix: Il callback onResult è impostato da VoiceAssistant e
+     * triggera geminiService.processMessage() che può dare feedback confusi.
+     */
+    var voiceDumpMode: Boolean = false
+
+    /**
      * Inizializza il servizio vocale.
      * Deve essere chiamato prima di startListening().
      */
@@ -499,7 +509,14 @@ class VoiceService @Inject constructor(
         Log.i(TAG, "Final result: '$text' -> processed: '$processedText' (confidence: $confidence)")
 
         _state.value = VoiceState.Result(processedText, confidence)
-        onResult?.invoke(processedText)
+
+        // BUG-17 fix: In modalità Voice Dump, NON triggerare il callback onResult
+        // per evitare che il flusso conversazionale legacy dia feedback confusi.
+        if (!voiceDumpMode) {
+            onResult?.invoke(processedText)
+        } else {
+            Log.d(TAG, "Voice Dump mode: skipping onResult callback")
+        }
 
         // Reset
         accumulatedText.clear()

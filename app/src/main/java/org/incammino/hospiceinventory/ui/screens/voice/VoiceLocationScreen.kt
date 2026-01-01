@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,6 +28,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -34,14 +37,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.incammino.hospiceinventory.service.voice.LocationConfirmData
 import org.incammino.hospiceinventory.service.voice.VoiceLocationState
+import org.incammino.hospiceinventory.ui.components.MicrophonePermissionState
+import org.incammino.hospiceinventory.ui.components.rememberMicrophonePermission
 
 /**
  * Screen per input vocale nuova ubicazione.
@@ -61,6 +68,21 @@ fun VoiceLocationScreen(
     onNavigateToConfirm: (LocationConfirmData) -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Gestione permesso microfono
+    val micPermission = rememberMicrophonePermission(
+        onGranted = {
+            viewModel.toggleListening()
+        }
+    )
+
+    // Mostra snackbar se permesso negato
+    LaunchedEffect(micPermission.state) {
+        if (micPermission.state == MicrophonePermissionState.Denied) {
+            snackbarHostState.showSnackbar("Permesso microfono necessario per la registrazione vocale")
+        }
+    }
 
     // Naviga automaticamente quando estrazione completata
     LaunchedEffect(state) {
@@ -82,7 +104,8 @@ fun VoiceLocationScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -117,7 +140,14 @@ fun VoiceLocationScreen(
             ) {
                 LocationMicrophoneButton(
                     state = state,
-                    onTap = { viewModel.toggleListening() }
+                    isPermissionGranted = micPermission.isGranted,
+                    onTap = {
+                        if (micPermission.isGranted) {
+                            viewModel.toggleListening()
+                        } else {
+                            micPermission.requestPermission()
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -144,6 +174,7 @@ fun VoiceLocationScreen(
 @Composable
 private fun LocationMicrophoneButton(
     state: VoiceLocationState,
+    isPermissionGranted: Boolean,
     onTap: () -> Unit
 ) {
     val isActive = state is VoiceLocationState.Listening ||
@@ -163,18 +194,21 @@ private fun LocationMicrophoneButton(
         label = "pulse_scale"
     )
 
+    // Colori basati su stato e permessi (TAP-TO-STOP pattern: rosso durante ascolto)
     val containerColor = when {
-        isActive -> MaterialTheme.colorScheme.primary
+        !isPermissionGranted -> MaterialTheme.colorScheme.surfaceVariant
+        isActive -> Color.Red  // ROSSO = STOP
         isProcessing -> MaterialTheme.colorScheme.tertiary
         state is VoiceLocationState.Error -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.primary
     }
 
     val contentColor = when {
-        isActive -> MaterialTheme.colorScheme.onPrimary
+        !isPermissionGranted -> MaterialTheme.colorScheme.onSurfaceVariant
+        isActive -> Color.White
         isProcessing -> MaterialTheme.colorScheme.onTertiary
         state is VoiceLocationState.Error -> MaterialTheme.colorScheme.onError
-        else -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onPrimary
     }
 
     FilledIconButton(
@@ -201,6 +235,13 @@ private fun LocationMicrophoneButton(
                 Icon(
                     Icons.Default.Stop,
                     contentDescription = "Ferma ascolto",
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+            !isPermissionGranted -> {
+                Icon(
+                    Icons.Default.MicOff,
+                    contentDescription = "Permesso richiesto",
                     modifier = Modifier.size(48.dp)
                 )
             }

@@ -5,6 +5,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,7 +38,7 @@ fun HomeScreen(
     onNavigateToSearch: (String) -> Unit,
     onNavigateToProduct: (String) -> Unit,
     onNavigateToNewProduct: (Map<String, String>?) -> Unit,
-    onNavigateToMaintenances: () -> Unit,
+    onNavigateToMaintenances: (String?) -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToScanner: () -> Unit,
     onNavigateToMaintainers: () -> Unit = {},
@@ -58,7 +60,7 @@ fun HomeScreen(
                 is NavigationAction.ToSearch -> onNavigateToSearch(action.query)
                 is NavigationAction.ToProduct -> onNavigateToProduct(action.productId)
                 is NavigationAction.ToNewProduct -> onNavigateToNewProduct(action.prefill)
-                is NavigationAction.ToMaintenances -> onNavigateToMaintenances()
+                is NavigationAction.ToMaintenances -> onNavigateToMaintenances(null)
                 is NavigationAction.ToScanner -> onNavigateToScanner()
                 is NavigationAction.ToNewMaintenance -> onNavigateToNewMaintenance(action.productId, action.prefill)
                 is NavigationAction.ToNewMaintainer -> onNavigateToNewMaintainer(action.prefill)
@@ -104,22 +106,29 @@ fun HomeScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refresh() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Alert Banner (se ci sono scadenze)
-            if (uiState.overdueCount > 0 || uiState.upcomingCount > 0) {
-                AlertBanner(
-                    overdueCount = uiState.overdueCount,
-                    upcomingCount = uiState.upcomingCount,
-                    onClick = onNavigateToMaintenances
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Dashboard Cards
+                DashboardCards(
+                overdueCount = uiState.overdueCount,
+                upcomingCount = uiState.upcomingCount,
+                totalProducts = uiState.totalProducts,
+                onOverdueClick = { onNavigateToMaintenances("OVERDUE") },
+                onUpcomingClick = { onNavigateToMaintenances("THIS_WEEK") },
+                onTotalClick = { onNavigateToSearch("") }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Pulsante Vocale Grande
             Spacer(modifier = Modifier.weight(0.2f))
@@ -190,7 +199,7 @@ fun HomeScreen(
                 onScanClick = onNavigateToScanner,
                 onSearchClick = { onNavigateToSearch("") },
                 onNewClick = { onNavigateToNewProduct(null) },
-                onMaintenancesClick = onNavigateToMaintenances
+                onMaintenancesClick = { onNavigateToMaintenances(null) }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -200,63 +209,103 @@ fun HomeScreen(
                 isOnline = uiState.isOnline,
                 pendingSync = uiState.pendingSyncCount
             )
+            }
         }
     }
 }
 
 /**
- * Banner per alert manutenzioni.
+ * Dashboard Cards - 3 card cliccabili per scadenze e totale prodotti.
  */
 @Composable
-private fun AlertBanner(
+private fun DashboardCards(
     overdueCount: Int,
     upcomingCount: Int,
-    onClick: () -> Unit
+    totalProducts: Int,
+    onOverdueClick: () -> Unit,
+    onUpcomingClick: () -> Unit,
+    onTotalClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Card Scadute
+        DashboardCard(
+            count = overdueCount,
+            label = "Scadute",
+            color = AlertOverdue,
+            icon = Icons.Filled.Warning,
+            onClick = onOverdueClick,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Card In Scadenza (7gg)
+        DashboardCard(
+            count = upcomingCount,
+            label = "7 giorni",
+            color = AlertWarning,
+            icon = Icons.Filled.Schedule,
+            onClick = onUpcomingClick,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Card Totale Prodotti
+        DashboardCard(
+            count = totalProducts,
+            label = "Prodotti",
+            color = MaterialTheme.colorScheme.primary,
+            icon = Icons.Filled.Inventory2,
+            onClick = onTotalClick,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+/**
+ * Singola card dashboard.
+ */
+@Composable
+private fun DashboardCard(
+    count: Int,
+    label: String,
+    color: Color,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
+            .height(90.dp)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = if (overdueCount > 0) {
-                MaterialTheme.colorScheme.errorContainer
-            } else {
-                Color(0xFFFFF3E0)
-            }
+            containerColor = color.copy(alpha = 0.15f)
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = if (overdueCount > 0) Icons.Filled.Warning else Icons.Filled.Schedule,
+                imageVector = icon,
                 contentDescription = null,
-                tint = if (overdueCount > 0) AlertOverdue else AlertWarning
+                tint = color,
+                modifier = Modifier.size(20.dp)
             )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                if (overdueCount > 0) {
-                    Text(
-                        text = "$overdueCount manutenzioni SCADUTE",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = AlertOverdue,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                if (upcomingCount > 0) {
-                    Text(
-                        text = "$upcomingCount in scadenza questa settimana",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AlertWarning
-                    )
-                }
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = "Vai alle scadenze"
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,6 +28,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -34,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -43,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.incammino.hospiceinventory.service.voice.ProductConfirmData
 import org.incammino.hospiceinventory.service.voice.VoiceProductState
+import org.incammino.hospiceinventory.ui.components.MicrophonePermissionState
+import org.incammino.hospiceinventory.ui.components.rememberMicrophonePermission
 
 /**
  * Screen per input vocale nuovo prodotto.
@@ -62,6 +68,21 @@ fun VoiceProductScreen(
     onNavigateToConfirm: (ProductConfirmData) -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Gestione permesso microfono
+    val micPermission = rememberMicrophonePermission(
+        onGranted = {
+            viewModel.toggleListening()
+        }
+    )
+
+    // Mostra snackbar se permesso negato
+    LaunchedEffect(micPermission.state) {
+        if (micPermission.state == MicrophonePermissionState.Denied) {
+            snackbarHostState.showSnackbar("Permesso microfono necessario per la registrazione vocale")
+        }
+    }
 
     // Naviga automaticamente quando estrazione completata
     LaunchedEffect(state) {
@@ -83,7 +104,8 @@ fun VoiceProductScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -118,7 +140,14 @@ fun VoiceProductScreen(
             ) {
                 ProductMicrophoneButton(
                     state = state,
-                    onTap = { viewModel.toggleListening() }
+                    isPermissionGranted = micPermission.isGranted,
+                    onTap = {
+                        if (micPermission.isGranted) {
+                            viewModel.toggleListening()
+                        } else {
+                            micPermission.requestPermission()
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -145,6 +174,7 @@ fun VoiceProductScreen(
 @Composable
 private fun ProductMicrophoneButton(
     state: VoiceProductState,
+    isPermissionGranted: Boolean,
     onTap: () -> Unit
 ) {
     val isActive = state is VoiceProductState.Listening ||
@@ -164,8 +194,9 @@ private fun ProductMicrophoneButton(
         label = "pulse_scale"
     )
 
-    // TAP-TO-STOP: Pulsante ROSSO durante l'ascolto per indicare chiaramente STOP
+    // Colori basati su stato e permessi
     val containerColor = when {
+        !isPermissionGranted -> MaterialTheme.colorScheme.surfaceVariant
         isActive -> Color.Red  // ROSSO = STOP
         isProcessing -> MaterialTheme.colorScheme.tertiary
         state is VoiceProductState.Error -> MaterialTheme.colorScheme.error
@@ -173,6 +204,7 @@ private fun ProductMicrophoneButton(
     }
 
     val contentColor = when {
+        !isPermissionGranted -> MaterialTheme.colorScheme.onSurfaceVariant
         isActive -> Color.White
         isProcessing -> MaterialTheme.colorScheme.onTertiary
         state is VoiceProductState.Error -> MaterialTheme.colorScheme.onError
@@ -203,6 +235,13 @@ private fun ProductMicrophoneButton(
                 Icon(
                     Icons.Default.Stop,
                     contentDescription = "Ferma ascolto",
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+            !isPermissionGranted -> {
+                Icon(
+                    Icons.Default.MicOff,
+                    contentDescription = "Permesso richiesto",
                     modifier = Modifier.size(48.dp)
                 )
             }

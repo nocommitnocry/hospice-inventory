@@ -35,6 +35,7 @@ data class HomeUiState(
     val overdueCount: Int = 0,
     val upcomingCount: Int = 0,
     val totalProducts: Int = 0,
+    val isRefreshing: Boolean = false,
 
     // Connectivity
     val isOnline: Boolean = true,
@@ -175,10 +176,16 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Ricarica i dati della dashboard.
+     * Ricarica i dati della dashboard con indicatore di refresh.
      */
     fun refresh() {
-        loadDashboardData()
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            loadDashboardData()
+            // Piccolo delay per feedback visivo
+            kotlinx.coroutines.delay(500)
+            _uiState.update { it.copy(isRefreshing = false) }
+        }
     }
 
     /**

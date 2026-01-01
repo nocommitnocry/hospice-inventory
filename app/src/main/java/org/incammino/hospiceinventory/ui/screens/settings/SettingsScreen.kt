@@ -22,7 +22,9 @@ import org.incammino.hospiceinventory.R
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToDataManagement: () -> Unit = {}
+    onNavigateToDataManagement: () -> Unit = {},
+    onNavigateToMaintainers: () -> Unit = {},
+    onNavigateToLocations: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -57,6 +59,24 @@ fun SettingsScreen(
                     title = stringResource(R.string.data_management),
                     subtitle = "Pulizia database, import/export",
                     onClick = onNavigateToDataManagement
+                )
+            }
+
+            item {
+                SettingsItem(
+                    icon = Icons.Default.Engineering,
+                    title = "Manutentori",
+                    subtitle = "Gestisci anagrafica manutentori",
+                    onClick = onNavigateToMaintainers
+                )
+            }
+
+            item {
+                SettingsItem(
+                    icon = Icons.Default.Place,
+                    title = "Ubicazioni",
+                    subtitle = "Gestisci ubicazioni e reparti",
+                    onClick = onNavigateToLocations
                 )
             }
 

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -82,11 +83,38 @@ fun ProductConfirmScreen(
     viewModel: ProductConfirmViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
     onSaved: () -> Unit,
-    onNavigateToLocationSearch: () -> Unit = {}
+    onNavigateToLocationSearch: () -> Unit = {},
+    onNavigateToLocationEdit: ((String) -> Unit)? = null,
+    onNavigateToBarcodeScanner: ((String) -> Unit)? = null
 ) {
-    // Intercetta back gesture per garantire cleanup del contesto Gemini
+    // Stato per dialogo conferma annullamento
+    var showDiscardDialog by remember { mutableStateOf(false) }
+
+    // Intercetta back gesture per chiedere conferma
     BackHandler {
-        onNavigateBack()  // Delega al callback che fa cleanup
+        showDiscardDialog = true
+    }
+
+    // Dialogo conferma annullamento
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Annullare?") },
+            text = { Text("I dati inseriti andranno persi.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onNavigateBack()
+                }) {
+                    Text("Annulla")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) {
+                    Text("Continua")
+                }
+            }
+        )
     }
 
     val saveState by viewModel.saveState.collectAsState()
@@ -284,7 +312,17 @@ fun ProductConfirmScreen(
                     onValueChange = { barcode = it },
                     label = { Text("Barcode") },
                     modifier = Modifier.weight(1f),
-                    singleLine = true
+                    singleLine = true,
+                    trailingIcon = if (onNavigateToBarcodeScanner != null) {
+                        {
+                            IconButton(onClick = { onNavigateToBarcodeScanner(barcode) }) {
+                                Icon(
+                                    Icons.Default.QrCode2,
+                                    contentDescription = "Scansiona barcode"
+                                )
+                            }
+                        }
+                    } else null
                 )
             }
 
@@ -301,6 +339,7 @@ fun ProductConfirmScreen(
                 locationMatch = locationMatch,
                 onLocationSelected = { locationMatch = it },
                 onSearchLocation = onNavigateToLocationSearch,
+                onEditLocation = { locationId -> onNavigateToLocationEdit?.invoke(locationId) },
                 isCreatingInline = inlineCreationState.isCreatingLocation,
                 wasCreatedInline = inlineCreationState.locationWasCreatedInline,
                 onCreateInline = { name ->
@@ -481,6 +520,7 @@ private fun LocationSelector(
     locationMatch: LocationMatch,
     onLocationSelected: (LocationMatch) -> Unit,
     onSearchLocation: () -> Unit,
+    onEditLocation: (locationId: String) -> Unit = {},
     isCreatingInline: Boolean = false,
     wasCreatedInline: Boolean = false,
     onCreateInline: (name: String) -> Unit = {}
@@ -492,7 +532,7 @@ private fun LocationSelector(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onSearchLocation() },
+                    .clickable { onEditLocation(locationMatch.location.id) },
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
@@ -929,6 +969,11 @@ private fun MaintenanceFrequencySelector(
 
 /**
  * Holder condiviso per passare dati tra schermate (come MaintenanceDataHolder).
+ *
+ * Pattern robusto per evitare race condition:
+ * - get() restituisce i dati senza consumarli
+ * - clear() cancella i dati esplicitamente
+ * - consume() mantiene compatibilità ma preferire get()+clear()
  */
 object ProductDataHolder {
     private var data: ProductConfirmData? = null
@@ -937,6 +982,24 @@ object ProductDataHolder {
         this.data = data
     }
 
+    /**
+     * Restituisce i dati senza consumarli.
+     * Usare clear() quando i dati sono stati processati.
+     */
+    fun get(): ProductConfirmData? = data
+
+    /**
+     * Cancella i dati esplicitamente.
+     * Chiamare dopo aver salvato o annullato.
+     */
+    fun clear() {
+        data = null
+    }
+
+    /**
+     * Compatibilità: restituisce e cancella i dati.
+     * Preferire get()+clear() per evitare race condition.
+     */
     fun consume(): ProductConfirmData? {
         val result = data
         data = null

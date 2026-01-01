@@ -59,7 +59,9 @@ sealed class Screen(val route: String) {
             return "product/edit/${productId ?: "new"}?prefill=$prefillJson"
         }
     }
-    data object MaintenanceList : Screen("maintenances")
+    data object MaintenanceList : Screen("maintenances?filter={filter}") {
+        fun createRoute(filter: String? = null) = "maintenances?filter=${filter ?: ""}"
+    }
     data object MaintenanceEdit : Screen("maintenance/edit/{maintenanceId}?productId={productId}") {
         fun createRoute(maintenanceId: String? = null, productId: String? = null) =
             "maintenance/edit/${maintenanceId ?: "new"}?productId=${productId ?: ""}"
@@ -131,8 +133,8 @@ fun AppNavigation(
                 onNavigateToNewProduct = { prefill ->
                     navController.navigate(Screen.ProductEdit.createRoute(null, prefill))
                 },
-                onNavigateToMaintenances = {
-                    navController.navigate(Screen.MaintenanceList.route)
+                onNavigateToMaintenances = { filter ->
+                    navController.navigate(Screen.MaintenanceList.createRoute(filter))
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
@@ -250,8 +252,18 @@ fun AppNavigation(
         }
 
         // Maintenance List
-        composable(Screen.MaintenanceList.route) {
+        composable(
+            route = Screen.MaintenanceList.route,
+            arguments = listOf(
+                navArgument("filter") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { backStackEntry ->
+            val initialFilter = backStackEntry.arguments?.getString("filter")?.takeIf { it.isNotEmpty() }
             MaintenanceListScreen(
+                initialFilter = initialFilter,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToProduct = { productId ->
                     navController.navigate(Screen.ProductDetail.createRoute(productId))
@@ -346,6 +358,12 @@ fun AppNavigation(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToDataManagement = {
                     navController.navigate(Screen.DataManagement.route)
+                },
+                onNavigateToMaintainers = {
+                    navController.navigate(Screen.MaintainerList.route)
+                },
+                onNavigateToLocations = {
+                    navController.navigate(Screen.LocationList.route)
                 }
             )
         }
@@ -422,19 +440,20 @@ fun AppNavigation(
 
         // Maintenance Confirm - Scheda di conferma
         composable(Screen.MaintenanceConfirm.route) {
-            // Usa remember per preservare i dati tra ricomposizioni
-            // consume() viene chiamato solo una volta alla prima composizione
-            val data = remember { MaintenanceDataHolder.consume() }
+            // Pattern robusto: peek() non consuma i dati, clear() chiamato esplicitamente
+            val data = remember { MaintenanceDataHolder.peek() }
 
             if (data != null) {
                 MaintenanceConfirmScreen(
                     initialData = data,
                     onNavigateBack = {
-                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        MaintenanceDataHolder.clear()  // Pulisci dati esplicitamente
+                        onVoiceSessionComplete()       // Cleanup contesto Gemini
                         navController.popBackStack()
                     },
                     onSaved = {
-                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        MaintenanceDataHolder.clear()  // Pulisci dati esplicitamente
+                        onVoiceSessionComplete()       // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     }
@@ -463,23 +482,33 @@ fun AppNavigation(
 
         // Product Confirm - Scheda di conferma (Fase 2)
         composable(Screen.ProductConfirm.route) {
-            // Usa remember per preservare i dati tra ricomposizioni
-            val data = remember { ProductDataHolder.consume() }
+            // Pattern robusto: get() non consuma i dati, clear() chiamato esplicitamente
+            val data = remember { ProductDataHolder.get() }
 
             if (data != null) {
                 ProductConfirmScreen(
                     initialData = data,
                     onNavigateBack = {
-                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        ProductDataHolder.clear()  // Pulisci dati esplicitamente
+                        onVoiceSessionComplete()   // Cleanup contesto Gemini
                         navController.popBackStack()
                     },
                     onSaved = {
-                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        ProductDataHolder.clear()  // Pulisci dati esplicitamente
+                        onVoiceSessionComplete()   // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     },
                     onNavigateToLocationSearch = {
                         navController.navigate(Screen.LocationList.route)
+                    },
+                    onNavigateToLocationEdit = { locationId ->
+                        // Naviga direttamente all'edit della location
+                        // (senza passare per LocationList)
+                        navController.navigate(Screen.LocationEdit.createRoute(locationId))
+                    },
+                    onNavigateToBarcodeScanner = { _ ->
+                        navController.navigate(Screen.Scanner.route)
                     }
                 )
             } else {
@@ -509,18 +538,20 @@ fun AppNavigation(
 
         // Maintainer Confirm - Scheda di conferma
         composable(Screen.MaintainerConfirm.route) {
-            // Usa remember per preservare i dati tra ricomposizioni
-            val data = remember { MaintainerDataHolder.consume() }
+            // Pattern robusto: get() non consuma i dati, clear() chiamato esplicitamente
+            val data = remember { MaintainerDataHolder.get() }
 
             if (data != null) {
                 MaintainerConfirmScreen(
                     initialData = data,
                     onNavigateBack = {
-                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        MaintainerDataHolder.clear()  // Pulisci dati esplicitamente
+                        onVoiceSessionComplete()      // Cleanup contesto Gemini
                         navController.popBackStack()
                     },
                     onSaved = {
-                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        MaintainerDataHolder.clear()  // Pulisci dati esplicitamente
+                        onVoiceSessionComplete()      // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     }
@@ -548,18 +579,20 @@ fun AppNavigation(
 
         // Location Confirm - Scheda di conferma
         composable(Screen.LocationConfirm.route) {
-            // Usa remember per preservare i dati tra ricomposizioni
-            val data = remember { LocationDataHolder.consume() }
+            // Pattern robusto: get() non consuma i dati, clear() chiamato esplicitamente
+            val data = remember { LocationDataHolder.get() }
 
             if (data != null) {
                 LocationConfirmScreen(
                     initialData = data,
                     onNavigateBack = {
-                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        LocationDataHolder.clear()  // Pulisci dati esplicitamente
+                        onVoiceSessionComplete()    // Cleanup contesto Gemini
                         navController.popBackStack()
                     },
                     onSaved = {
-                        onVoiceSessionComplete()  // Cleanup contesto Gemini
+                        LocationDataHolder.clear()  // Pulisci dati esplicitamente
+                        onVoiceSessionComplete()    // Cleanup contesto Gemini
                         // Torna alla home dopo il salvataggio
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     }

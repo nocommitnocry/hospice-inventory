@@ -66,7 +66,10 @@ class BackupManager @Inject constructor(
             val tempFile = File(context.cacheDir, backupFileName)
 
             // Forza checkpoint WAL - scrive tutti i dati pending nel .db principale
-            database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+            // Usa query() invece di execSQL() per compatibilità con Room
+            val cursor = database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)")
+            cursor.moveToFirst()
+            cursor.close()
             Log.d(TAG, "WAL checkpoint completato")
 
             // Copia il database

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +36,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -56,6 +58,9 @@ import org.incammino.hospiceinventory.domain.model.LocationType
 import org.incammino.hospiceinventory.service.voice.LocationConfirmData
 import org.incammino.hospiceinventory.service.voice.LocationFormData
 import org.incammino.hospiceinventory.service.voice.SaveState
+import org.incammino.hospiceinventory.ui.components.MicrophonePermissionState
+import org.incammino.hospiceinventory.ui.components.rememberMicrophonePermission
+import org.incammino.hospiceinventory.ui.components.voice.VoiceContinueButton
 import org.incammino.hospiceinventory.ui.theme.AlertWarning
 
 /**
@@ -72,13 +77,52 @@ fun LocationConfirmScreen(
     onNavigateBack: () -> Unit,
     onSaved: () -> Unit
 ) {
-    // Intercetta back gesture per garantire cleanup del contesto Gemini
+    // Stato per dialogo conferma annullamento
+    var showDiscardDialog by remember { mutableStateOf(false) }
+
+    // Intercetta back gesture per chiedere conferma
     BackHandler {
-        onNavigateBack()  // Delega al callback che fa cleanup
+        showDiscardDialog = true
+    }
+
+    // Dialogo conferma annullamento
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Annullare?") },
+            text = { Text("I dati inseriti andranno persi.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onNavigateBack()
+                }) {
+                    Text("Annulla")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) {
+                    Text("Continua")
+                }
+            }
+        )
     }
 
     val saveState by viewModel.saveState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Voice Continue state
+    val voiceContinueState by viewModel.voiceContinueState.collectAsState()
+    val partialTranscript by viewModel.partialTranscript.collectAsState()
+
+    // Gestione permesso microfono
+    val micPermission = rememberMicrophonePermission()
+
+    // Mostra snackbar se permesso negato
+    LaunchedEffect(micPermission.state) {
+        if (micPermission.state == MicrophonePermissionState.Denied) {
+            snackbarHostState.showSnackbar("Permesso microfono necessario per la registrazione vocale")
+        }
+    }
 
     // Stato locale per i campi editabili
     var name by rememberSaveable { mutableStateOf(initialData.name) }
@@ -300,6 +344,19 @@ fun LocationConfirmScreen(
                 maxLines = 4
             )
 
+            // VoiceContinueButton per aggiungere dettagli a voce
+            VoiceContinueButton(
+                state = voiceContinueState,
+                onTap = {
+                    if (micPermission.isGranted) {
+                        viewModel.toggleVoiceInput()
+                    } else {
+                        micPermission.requestPermission()
+                    }
+                },
+                partialTranscript = partialTranscript
+            )
+
             Spacer(modifier = Modifier.height(32.dp))
 
             // Pulsante Salva
@@ -432,6 +489,12 @@ object LocationDataHolder {
 
     fun set(data: LocationConfirmData) {
         this.data = data
+    }
+
+    fun get(): LocationConfirmData? = data
+
+    fun clear() {
+        data = null
     }
 
     fun consume(): LocationConfirmData? {

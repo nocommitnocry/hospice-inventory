@@ -312,6 +312,11 @@ XxxConfirmScreen
 // Flag principale
 private var isContinuousListening = false
 
+// Flag Voice Dump mode (01/01/2026)
+// Quando true, NON triggera il callback onResult per evitare
+// che il flusso conversazionale legacy dia feedback confusi
+var voiceDumpMode: Boolean = false
+
 fun startListening() {
     isContinuousListening = true
     speechRecognizer?.startListening(intent)
@@ -332,6 +337,14 @@ override fun onResults(results: Bundle?) {
     accumulatedText.append(bestMatch)
     if (isContinuousListening) {
         speechRecognizer?.startListening(intent)  // Loop!
+    }
+}
+
+// In emitFinalResult():
+private fun emitFinalResult(text: String, confidence: Float) {
+    _state.value = VoiceState.Result(processedText, confidence)
+    if (!voiceDumpMode) {
+        onResult?.invoke(processedText)  // Legacy conversational flow
     }
 }
 ```
@@ -555,6 +568,7 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 
 - **VoiceDumpButton**: Pulsante con stati idle (blu) / listening (rosso) / processing
 - **VoiceContinueButton**: Input vocale incrementale nelle ConfirmScreen
+- **MicrophonePermission**: Composable per gestione permesso RECORD_AUDIO con `rememberMicrophonePermission()`
 - **InlineEntityCreator**: Creazione rapida entità mancanti
 - **AlertBanner**: Card colorata per scadenze
 - **SelectableDropdownField**: Campo con dropdown + digitazione libera (Categoria, Ubicazione, Fornitore)
@@ -620,6 +634,16 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
   - [x] UI in DataManagementScreen (sezione Google Drive)
   - [x] Fix autoSizeColumn() crash (usa setColumnWidth())
 
+#### Voice Flow & Data Consistency
+- [x] **Fase 8: Voice Flow Fixes** ✅ 01/01/2026
+  - [x] MicrophonePermission composable riutilizzabile
+  - [x] VoiceContinueButton in tutte le ConfirmScreen
+  - [x] Icona barcode scanner in ProductConfirmScreen
+  - [x] Fix visualizzazione prodotto dopo selezione inline
+  - [x] Fix race condition DataHolder (get/clear pattern)
+  - [x] Fix navigazione dopo edit ubicazione inline
+  - [x] Fix feedback vocale confuso (voiceDumpMode flag)
+
 ### 🔲 Da Fare
 
 #### Priorità Alta
@@ -648,6 +672,44 @@ val AlertOk = Color(0xFF388E3C)          // Verde - OK
 ---
 
 ## 🐛 Bugfix Recenti
+
+### Sessione 01/01/2026 - Voice Flow & Data Consistency (BRIEF_2_VOICE_DATA.md)
+
+**BUG-01 - Permessi microfono** (BUGFIX)
+- Problema: Il riconoscimento vocale partiva senza verificare/richiedere il permesso RECORD_AUDIO
+- Soluzione: Creato `MicrophonePermission.kt` composable riutilizzabile con `rememberMicrophonePermission()`
+- File nuovi: `MicrophonePermission.kt`
+- File modificati: `VoiceMaintenanceScreen.kt`, `VoiceProductScreen.kt`, `VoiceMaintainerScreen.kt`, `VoiceLocationScreen.kt`
+
+**BUG-02 - VoiceContinueButton mancante** (BUGFIX)
+- Problema: Mancava VoiceContinueButton in MaintainerConfirmScreen e LocationConfirmScreen
+- Soluzione: Aggiunto VoiceContinueButton con gestione permesso microfono integrata
+- File modificati: `MaintainerConfirmScreen.kt`, `LocationConfirmScreen.kt`
+
+**BUG-04 - Icona barcode scanner** (BUGFIX)
+- Problema: Mancava icona per avviare scanner barcode in ProductConfirmScreen
+- Soluzione: Aggiunta icona `QrCode2` nel campo barcode con callback `onNavigateToBarcodeScanner`
+- File modificati: `ProductConfirmScreen.kt`, `Navigation.kt`
+
+**BUG-08 - Nome prodotto non visibile dopo selezione** (BUGFIX)
+- Problema: In MaintenanceConfirmScreen, dopo selezione prodotto da ricerca inline, il nome non compariva
+- Soluzione: Impostare `showSearch = false` immediatamente nel callback `onProductSelect`
+- File modificati: `MaintenanceConfirmScreen.kt`
+
+**BUG-09 - Race condition DataHolder** (BUGFIX)
+- Problema: Campi intermittenti in ProductConfirmScreen per race condition con `consume()` durante recomposition
+- Soluzione: Refactoring di tutti i DataHolder con pattern `get()/clear()` invece di `consume()`
+- File modificati: `ProductConfirmScreen.kt`, `MaintainerConfirmScreen.kt`, `LocationConfirmScreen.kt`, `MaintenanceConfirmScreen.kt`, `Navigation.kt`
+
+**BUG-10 - Navigazione errata dopo modifica ubicazione inline** (BUGFIX)
+- Problema: Da ProductConfirmScreen, dopo edit ubicazione inline → tornava a Home invece di ProductConfirmScreen
+- Soluzione: Aggiunto callback `onNavigateToLocationEdit` che naviga direttamente a LocationEditScreen
+- File modificati: `ProductConfirmScreen.kt` (+onNavigateToLocationEdit, LocationSelector usa onEditLocation), `Navigation.kt`
+
+**BUG-17 - Feedback vocale confuso per ubicazioni** (BUGFIX)
+- Problema: Durante creazione ubicazione, il modello diceva "quale prodotto stai cercando?" per contaminazione dal flusso conversazionale legacy
+- Soluzione: Aggiunto flag `voiceDumpMode` in VoiceService che disabilita il callback `onResult` (usato da VoiceAssistant per il flusso conversazionale)
+- File modificati: `VoiceService.kt` (+voiceDumpMode flag, check in emitFinalResult), `VoiceLocationViewModel.kt`, `VoiceMaintenanceViewModel.kt`, `VoiceProductViewModel.kt`, `VoiceMaintainerViewModel.kt` (impostano voiceDumpMode=true in startListening, false in reset)
 
 ### Sessione 31/12/2025 - Google Drive Backup
 
@@ -778,3 +840,4 @@ fun isActiveTaskComplete()
 - `SPEC-unified-selectors.md` - Implementato 30/12/2025
 - `SPEC-LocationEditScreen-Enhancement.md` - Implementato 30/12/2025
 - `SPEC-GoogleDrive-Backup.md` - Implementato 31/12/2025
+- `BRIEF_2_VOICE_DATA.md` - Implementato 01/01/2026

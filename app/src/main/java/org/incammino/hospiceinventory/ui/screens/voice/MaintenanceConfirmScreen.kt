@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -86,9 +87,12 @@ fun MaintenanceConfirmScreen(
     onNavigateBack: () -> Unit,
     onSaved: () -> Unit
 ) {
-    // Intercetta back gesture per garantire cleanup del contesto Gemini
+    // Stato per dialogo conferma annullamento
+    var showDiscardDialog by remember { mutableStateOf(false) }
+
+    // Intercetta back gesture per chiedere conferma
     BackHandler {
-        onNavigateBack()  // Delega al callback che fa cleanup
+        showDiscardDialog = true
     }
 
     val saveState by viewModel.saveState.collectAsState()
@@ -158,6 +162,28 @@ fun MaintenanceConfirmScreen(
         if (saveState is SaveState.Success) {
             onSaved()
         }
+    }
+
+    // Dialogo conferma annullamento
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Annullare?") },
+            text = { Text("I dati inseriti andranno persi.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onNavigateBack()
+                }) {
+                    Text("Annulla")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) {
+                    Text("Continua")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -426,7 +452,10 @@ private fun ProductSelectionCard(
                         query = searchQuery,
                         results = searchResults,
                         onQueryChange = onSearchQueryChange,
-                        onProductSelect = onSelect
+                        onProductSelect = { product ->
+                            showSearch = false  // Chiudi ricerca immediatamente
+                            onSelect(product)
+                        }
                     )
                 }
 

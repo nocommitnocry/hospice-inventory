@@ -45,6 +45,7 @@ data class MaintenanceEditUiState(
     val type: MaintenanceType? = null,
     val outcome: MaintenanceOutcome? = null,
     val notes: String = "",
+    val durationMinutes: String = "",
 
     // Costi
     val cost: String = "",
@@ -263,6 +264,10 @@ class MaintenanceEditViewModel @Inject constructor(
         _uiState.update { it.copy(notes = notes) }
     }
 
+    fun updateDurationMinutes(duration: String) {
+        _uiState.update { it.copy(durationMinutes = duration) }
+    }
+
     fun updateCost(cost: String) {
         _uiState.update { it.copy(cost = cost) }
     }
@@ -336,6 +341,9 @@ class MaintenanceEditViewModel @Inject constructor(
                     12, 0, 0
                 ).toInstant(TimeZone.currentSystemDefault())
 
+                // Costruisci le note con la durata se specificata
+                val notesWithDuration = buildNotes(state.notes, state.durationMinutes.toIntOrNull())
+
                 val maintenance = Maintenance(
                     id = maintenanceId ?: UUID.randomUUID().toString(),
                     productId = state.productId!!,
@@ -343,7 +351,7 @@ class MaintenanceEditViewModel @Inject constructor(
                     date = dateInstant,
                     type = state.type!!,
                     outcome = state.outcome,
-                    notes = state.notes.takeIf { it.isNotBlank() },
+                    notes = notesWithDuration,
                     cost = if (state.isWarrantyWork) null else state.cost.toDoubleOrNull(),
                     invoiceNumber = if (state.isWarrantyWork) null else state.invoiceNumber.takeIf { it.isNotBlank() },
                     isWarrantyWork = state.isWarrantyWork,
@@ -380,5 +388,29 @@ class MaintenanceEditViewModel @Inject constructor(
      */
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    /**
+     * Costruisce le note includendo la durata se specificata.
+     */
+    private fun buildNotes(notes: String, durationMinutes: Int?): String? {
+        val parts = mutableListOf<String>()
+
+        if (durationMinutes != null && durationMinutes > 0) {
+            val hours = durationMinutes / 60
+            val mins = durationMinutes % 60
+            val durationStr = when {
+                hours > 0 && mins > 0 -> "Durata: ${hours}h ${mins}min"
+                hours > 0 -> "Durata: ${hours}h"
+                else -> "Durata: ${mins}min"
+            }
+            parts.add(durationStr)
+        }
+
+        if (notes.isNotBlank()) {
+            parts.add(notes)
+        }
+
+        return parts.joinToString("\n").takeIf { it.isNotBlank() }
     }
 }
